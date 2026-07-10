@@ -365,9 +365,20 @@ export default function AgreementsTable({
   const [transferRow, setTransferRow] = useState(null);
 
   const searchVendors = useCallback(async (query) => {
+    const trimmed = query?.trim() || '';
+    if (!trimmed) {
+      setVendorOptions([]);
+      return;
+    }
+    const isNumeric = /^\d+$/.test(trimmed);
+    if (!isNumeric && trimmed.length < 3) {
+      setVendorOptions([]);
+      return;
+    }
+
     setLoadingVendors(true);
     try {
-      const { data } = await integrationApi.searchVendors(query?.trim() || '');
+      const { data } = await integrationApi.searchVendors(trimmed);
       setVendorOptions(Array.isArray(data) ? data : []);
     } catch {
       setVendorOptions([]);
@@ -391,9 +402,8 @@ export default function AgreementsTable({
   }, []);
 
   useEffect(() => {
-    searchVendors('');
     searchIncomeTypes('');
-  }, [searchVendors, searchIncomeTypes]);
+  }, [searchIncomeTypes]);
 
   const handleSubmit = useCallback(async (agreementId, comments) => {
     try {

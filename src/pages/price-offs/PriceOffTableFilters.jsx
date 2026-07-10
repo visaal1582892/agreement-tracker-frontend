@@ -180,7 +180,7 @@ export function StickyCheckboxCell({ header = false, children, onClick }) {
 
 export function HeaderLabel({ children }) {
   return (
-    <Typography variant="caption" fontWeight={700} display="block" lineHeight={1.2}>
+    <Typography variant="caption" fontWeight={700} display="block" sx={{ lineHeight: 1.2 }}>
       {children}
     </Typography>
   );

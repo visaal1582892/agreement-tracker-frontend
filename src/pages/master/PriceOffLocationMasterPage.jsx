@@ -1,25 +1,25 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
-  Box, Button, TextField, Stack, Typography,
-  FormControlLabel, Switch,
+  Box, Button, TextField, Stack, Typography, FormControlLabel, Switch,
 } from '@mui/material';
 import SlidePanel from '../../components/ui/SlidePanel';
 import MasterDataTable from '../../components/master/MasterDataTable';
 import { MasterAddButton, MasterRowActions } from '../../components/master/MasterCrudActions';
 import { buildMasterColumns, masterIdColumn } from '../../components/master/masterTableColumns';
-import { companyApi } from '../../api/masterApi';
+import { priceOffLocationApi } from '../../api/masterApi';
 import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
 
 const COLUMNS = buildMasterColumns([
   masterIdColumn(),
-  { field: 'companyName', header: 'Company Name', minWidth: 180, sortable: true, filterType: 'text' },
+  { field: 'code', header: 'Zone Code', minWidth: 120, sortable: true, filterType: 'text' },
+  { field: 'name', header: 'Zone Name', minWidth: 180, sortable: true, filterType: 'text' },
 ]);
 
-export default function CompanyMasterPage() {
-  const page = useMasterPage({ api: companyApi, entityLabel: 'Company' });
+export default function PriceOffLocationMasterPage() {
+  const page = useMasterPage({ api: priceOffLocationApi, entityLabel: 'Price Off Location' });
 
   const enrichedRows = page.rows.map((row) => ({
     ...row,
@@ -36,14 +36,16 @@ export default function CompanyMasterPage() {
     <Box>
       <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Companies</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>Price Off Locations</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Virtual zones that drive Excel allocation columns (AP, KA, NAG, etc.)
+          </Typography>
           <Typography variant="body2" color="text.secondary">
             {page.totalCount} record{page.totalCount !== 1 ? 's' : ''}
           </Typography>
         </Box>
-        <MasterAddButton label="Add Company" onClick={page.openCreate} />
+        <MasterAddButton label="Add Location" onClick={page.openCreate} />
       </Stack>
-
       <MasterDataTable
         columns={COLUMNS}
         rows={enrichedRows}
@@ -59,8 +61,7 @@ export default function CompanyMasterPage() {
         filters={page.filters}
         onFilterChange={page.handleFilterChange}
       />
-
-      <CompanyFormPanel
+      <LocationFormPanel
         open={page.panelOpen}
         onClose={page.closePanel}
         editingRow={page.editingRow}
@@ -71,22 +72,20 @@ export default function CompanyMasterPage() {
   );
 }
 
-function CompanyFormPanel({ open, onClose, editingRow, saving, onSave }) {
+function LocationFormPanel({ open, onClose, editingRow, saving, onSave }) {
   const isEdit = Boolean(editingRow);
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
   useEffect(() => {
     if (!open) return;
-    reset(isEdit
-      ? { companyName: editingRow.companyName, isActive: isRecordActive(editingRow) }
-      : { companyName: '', isActive: true });
+    reset(isEdit ? editingRow : { name: '', code: '', isActive: true });
   }, [open, editingRow, isEdit, reset]);
 
   return (
     <SlidePanel
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Edit Company' : 'Add Company'}
+      title={isEdit ? 'Edit Price Off Location' : 'Add Price Off Location'}
       loading={saving}
     >
       <Box
@@ -96,38 +95,41 @@ function CompanyFormPanel({ open, onClose, editingRow, saving, onSave }) {
         sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}
       >
         <TextField
-          label="Company Name"
+          label="Zone Code"
           required
-          error={!!errors.companyName}
-          helperText={errors.companyName?.message}
-          {...register('companyName', { required: 'Company name is required' })}
+          error={!!errors.code}
+          helperText={errors.code?.message || 'Short code e.g. AP, NAG, PNQ'}
+          slotProps={{ htmlInput: { style: { textTransform: 'uppercase' } } }}
+          {...register('code', {
+            required: 'Zone code is required',
+            maxLength: { value: 50, message: 'Max 50 characters' },
+          })}
           fullWidth
         />
-
+        <TextField
+          label="Zone Name"
+          required
+          error={!!errors.name}
+          helperText={errors.name?.message}
+          {...register('name', { required: 'Zone name is required' })}
+          fullWidth
+        />
         {isEdit && (
           <FormControlLabel
-            control={
+            control={(
               <Switch
                 {...register('isActive')}
                 defaultChecked={isRecordActive(editingRow)}
                 color="success"
               />
-            }
+            )}
             label="Active"
           />
         )}
-
         <Stack direction="row" spacing={1.5} sx={{ justifyContent: 'flex-end', mt: 1 }}>
-          <Button variant="outlined" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={saving}
-            sx={{ background: BRAND.redGradient }}
-          >
-            {isEdit ? 'Save Changes' : 'Create Company'}
+          <Button variant="outlined" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="submit" variant="contained" disabled={saving} sx={{ background: BRAND.redGradient }}>
+            {isEdit ? 'Save Changes' : 'Create Location'}
           </Button>
         </Stack>
       </Box>

@@ -3,16 +3,20 @@
  * Save-as-draft bypasses this entirely.
  */
 export function validateAgreementForSubmit(state, enqueueSnackbar) {
-  if (!state.companyId) {
-    enqueueSnackbar('Cannot submit: Company is missing.', { variant: 'warning' });
+  if (!state.agreementGroupId && !state.newAgreementGroupName?.trim()) {
+    enqueueSnackbar('Cannot submit: Agreement group is missing.', { variant: 'warning' });
     return false;
   }
   if (!state.vendorIds?.length) {
     enqueueSnackbar('Cannot submit: At least one Vendor is required.', { variant: 'warning' });
     return false;
   }
-  if (!state.productRules?.productRules?.length) {
-    enqueueSnackbar('Cannot submit: At least one Product must be selected.', { variant: 'warning' });
+  if (!state.productRules?.manufacturers?.length) {
+    enqueueSnackbar('Cannot submit: At least one Manufacturer is required.', { variant: 'warning' });
+    return false;
+  }
+  if (!state.productRules?.divisionRules?.length) {
+    enqueueSnackbar('Cannot submit: At least one Division is required.', { variant: 'warning' });
     return false;
   }
   if (!state.agreement) {

@@ -1,4 +1,5 @@
 import { formatLocalDateString } from './dateUtils';
+import { buildApiProductRulesPayload } from './productScopeUtils';
 
 function sortedIds(ids = []) {
   return [...ids].map(String).sort();
@@ -15,6 +16,12 @@ export function buildReapprovalBaseline(sourceAgreement, vendorIds, productRules
     return null;
   }
 
+  const apiProductRules = buildApiProductRulesPayload({
+    manufacturers: productRules?.manufacturers ?? sourceAgreement.manufacturerIds ?? [],
+    divisionRules: productRules?.divisionRules ?? sourceAgreement.divisionRules ?? [],
+    productRules: productRules?.productRules ?? sourceAgreement.productRules ?? [],
+  });
+
   return {
     approvalStatus: sourceAgreement.approvalStatus,
     vendorIds: sortedIds(vendorIds ?? sourceAgreement.vendors?.map((vendor) => vendor.vendorId)),
@@ -23,9 +30,9 @@ export function buildReapprovalBaseline(sourceAgreement, vendorIds, productRules
     commercialStructure: sourceAgreement.commercialStructure ?? null,
     commercialValue: sourceAgreement.commercialValue ?? null,
     calculationFormula: sourceAgreement.calculationFormula ?? '',
-    manufacturers: sortedIds(productRules?.manufacturers ?? sourceAgreement.manufacturerIds),
-    divisionRules: normalizeRules(productRules?.divisionRules ?? sourceAgreement.divisionRules),
-    productRules: normalizeRules(productRules?.productRules ?? sourceAgreement.productRules),
+    manufacturers: sortedIds(apiProductRules.manufacturers),
+    divisionRules: normalizeRules(apiProductRules.divisionRules),
+    productRules: normalizeRules(apiProductRules.productRules),
   };
 }
 
@@ -63,12 +70,13 @@ export function detectRequiresReapproval(baseline, state) {
   if (String(commercials.commercialValue ?? '') !== String(baseline.commercialValue ?? '')) return true;
   if ((commercials.calculationFormula ?? '') !== (baseline.calculationFormula ?? '')) return true;
 
-  if (!sortedIds(productRules?.manufacturers).every((id, index) => id === baseline.manufacturers[index])
-    || sortedIds(productRules?.manufacturers).length !== baseline.manufacturers.length) {
+  const apiProductRules = buildApiProductRulesPayload(productRules);
+  if (!sortedIds(apiProductRules.manufacturers).every((id, index) => id === baseline.manufacturers[index])
+    || sortedIds(apiProductRules.manufacturers).length !== baseline.manufacturers.length) {
     return true;
   }
-  if (!rulesEqual(productRules?.divisionRules, baseline.divisionRules)) return true;
-  if (!rulesEqual(productRules?.productRules, baseline.productRules)) return true;
+  if (!rulesEqual(apiProductRules.divisionRules, baseline.divisionRules)) return true;
+  if (!rulesEqual(apiProductRules.productRules, baseline.productRules)) return true;
 
   return false;
 }

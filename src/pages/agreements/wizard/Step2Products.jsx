@@ -1,56 +1,45 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box, Typography, Grid, FormControl, Select, MenuItem, TextField,
-  FormGroup, FormControlLabel, Checkbox, Chip, Button, Alert, CircularProgress,
+  Box, Typography, Paper, FormControl, Select, MenuItem, TextField,
+  Checkbox, Button, Alert, CircularProgress, List, ListItem, ListItemButton,
+  ListItemIcon, ListItemText, TablePagination,
 } from '@mui/material';
 import { AccountTreeOutlined } from '@mui/icons-material';
-import axiosInstance from '../../../api/axiosInstance';
-import { ENDPOINTS } from '../../../config/endpoints';
+import { integrationApi, unwrapPaginatedResponse } from '../../../api/integrationApi';
+import {
+  buildExplicitScopeRules,
+  normalizeExplicitScopeRules,
+} from '../../../utils/productScopeUtils';
+import { useDebounce } from '../../../hooks/useDebounce';
 import { BRAND } from '../../../config/theme';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
 import WizardSectionTitle from '../../../components/wizard/WizardSectionTitle';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 
-const panelSx = {
+const MANUFACTURER_DROPDOWN_LIMIT = 50;
+const EMPTY_RULES = { manufacturers: [], divisionRules: [], productRules: [] };
+
+const columnPaperSx = {
+  flex: 1,
+  minWidth: 0,
+  p: 1.5,
+  display: 'flex',
+  flexDirection: 'column',
   border: `1px solid ${BRAND.borderLight}`,
   borderRadius: '10px',
-  bgcolor: BRAND.white,
-  p: 2,
-  height: '100%',
-  display: 'flex',
-  flexDirection: 'column',
 };
 
-const listSx = {
-  flex: 1,
-  mt: 1,
+const scrollableListBoxSx = {
+  maxHeight: 300,
   overflowY: 'auto',
-  maxHeight: 320,
-};
-
-const panelHeaderSx = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 1,
-  mb: 1,
-  minHeight: 88,
-};
-
-const panelHeaderTitleRowSx = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 1,
-};
-
-const panelHeaderActionsRowSx = {
-  display: 'flex',
-  gap: 1.5,
-  alignItems: 'center',
+  border: `1px solid ${BRAND.borderLight}`,
+  borderRadius: 1,
+  flex: 1,
 };
 
 const ruleSelectSx = {
-  minWidth: 200,
+  minWidth: 0,
+  width: '100%',
   flexShrink: 0,
 };
 
@@ -60,46 +49,75 @@ const headerActionButtonSx = {
   fontSize: '0.72rem',
 };
 
-const EMPTY_RULES = { manufacturers: [], divisionRules: [], productRules: [] };
-
-function divisionsFromPool(products) {
-  const map = new Map();
-  products.forEach((p) => {
-    if (p.divisionId && !map.has(p.divisionId)) {
-      map.set(p.divisionId, { id: p.divisionId, divisionName: p.divisionName });
-    }
-  });
-  return Array.from(map.values());
+function ScrollableCheckboxList({
+  items,
+  getItemId,
+  getItemLabel,
+  selectedIds,
+  onToggle,
+}) {
+  return (
+    <Box sx={scrollableListBoxSx}>
+      <List dense>
+        {items.map((item) => {
+          const id = getItemId(item);
+          const labelId = `checkbox-list-label-${id}`;
+          return (
+            <ListItem key={id} disablePadding>
+              <ListItemButton role={undefined} onClick={() => onToggle(item)} dense>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <Checkbox
+                    edge="start"
+                    checked={selectedIds.some((selectedId) => toNumericId(selectedId) === toNumericId(id))}
+                    tabIndex={-1}
+                    disableRipple
+                    inputProps={{ 'aria-labelledby': labelId }}
+                    size="small"
+                  />
+                </ListItemIcon>
+                <ListItemText
+                  id={labelId}
+                  primary={getItemLabel(item)}
+                  primaryTypographyProps={{ variant: 'body2' }}
+                />
+              </ListItemButton>
+            </ListItem>
+          );
+        })}
+      </List>
+    </Box>
+  );
 }
 
-function manufacturerPool(products, selectedManufacturers) {
-  if (!selectedManufacturers.length) return products;
-  const mfrIds = new Set(selectedManufacturers.map((m) => m.id));
-  return products.filter((p) => mfrIds.has(p.manufacturerId));
+function toNumericId(id) {
+  const parsed = Number(id);
+  return Number.isNaN(parsed) ? id : parsed;
 }
 
-/** Live intersection: catalog → optional mfr → optional divisions. */
-export function computeVisibleProducts(
-  productCatalog,
-  selectedManufacturers,
-  selectedDivisionIds,
-  divisionOp,
-) {
-  if (!productCatalog.length) return [];
+function normalizeManufacturer(item) {
+  return {
+    id: toNumericId(item.id),
+    manufacturerName: item.manufacturerName || item.name || '',
+  };
+}
 
-  const hasMfr = selectedManufacturers.length > 0;
-  let pool = productCatalog;
+function normalizeDivision(item) {
+  return {
+    id: toNumericId(item.id),
+    divisionName: item.divisionName,
+    manufacturerId: toNumericId(item.manufacturerId),
+  };
+}
 
-  if (hasMfr) {
-    pool = manufacturerPool(productCatalog, selectedManufacturers);
-    if (!selectedDivisionIds.length) return [];
-    if (divisionOp === 'INCLUDE') {
-      return pool.filter((p) => selectedDivisionIds.includes(p.divisionId));
-    }
-    return pool.filter((p) => !selectedDivisionIds.includes(p.divisionId));
-  }
-
-  return pool;
+function normalizeProduct(item) {
+  return {
+    id: item.id,
+    productName: item.productName,
+    divisionId: item.divisionId,
+    divisionName: item.divisionName,
+    manufacturerId: item.manufacturerId,
+    manufacturerName: item.manufacturerName,
+  };
 }
 
 export function hasSavedProductRules(rules = {}) {
@@ -110,516 +128,792 @@ export function hasSavedProductRules(rules = {}) {
   );
 }
 
-/** Map backend/wizard rule arrays into Step2Products local state shape. */
-export function mapSharedRulesToLocalState(rules, productCatalog, manufacturerOptions) {
-  const seedMfrs = manufacturerOptions.filter((m) =>
-    (rules.manufacturers || []).includes(m.id),
-  );
-  const mfrPool = seedMfrs.length
-    ? manufacturerPool(productCatalog, seedMfrs)
-    : productCatalog;
+export function mapSharedRulesToLocalState(rules) {
+  const seedMfrs = (
+    rules.manufacturerOptions?.length
+      ? rules.manufacturerOptions
+      : (rules.manufacturers || []).map((id) => ({ id, manufacturerName: '' }))
+  ).map(normalizeManufacturer);
+  const normalizedDivisions = normalizeExplicitScopeRules(rules.divisionRules || [], 'INCLUDE');
+  const normalizedProducts = normalizeExplicitScopeRules(rules.productRules || [], 'EXCLUDE');
 
-  const next = {
+  return {
     selectedManufacturers: seedMfrs,
-    selectedDivisionIds: [],
-    checkedProductIds: [],
-    divisionOp: 'INCLUDE',
-    productOp: 'INCLUDE',
-    prevAvailableDivisionIds: [],
-    prevVisibleProductIds: [],
+    selectedDivisionIds: normalizedDivisions.rules.map((rule) => toNumericId(rule.id)),
+    selectedDivisionMeta: normalizedDivisions.rules.reduce((map, rule) => {
+      const id = toNumericId(rule.id);
+      map.set(id, { id, divisionName: rule.name || '' });
+      return map;
+    }, new Map()),
+    selectedProductRuleIds: normalizedProducts.rules.map((rule) => rule.id),
+    selectedProductMeta: normalizedProducts.rules.reduce((map, rule) => {
+      map.set(rule.id, { id: rule.id, productName: rule.name || rule.id });
+      return map;
+    }, new Map()),
+    productOp: normalizedProducts.ruleType,
+    divisionOp: normalizedDivisions.ruleType,
   };
-
-  if (rules.divisionRules?.length) {
-    next.divisionOp = rules.divisionRules[0].ruleType || 'INCLUDE';
-    next.selectedDivisionIds = rules.divisionRules.map((r) => r.id);
-    next.prevAvailableDivisionIds = divisionsFromPool(mfrPool).map((d) => d.id);
-  }
-
-  if (rules.productRules?.length) {
-    next.productOp = rules.productRules[0].ruleType || 'INCLUDE';
-    next.checkedProductIds = rules.productRules.map((r) => r.id);
-    next.prevVisibleProductIds = next.checkedProductIds;
-  }
-
-  return next;
 }
 
-function countedLabel(base, count) {
-  return `${base} (${count})`;
+function formatDivisionLabel(division) {
+  return `${division.divisionName} (ID: ${division.id})`;
+}
+
+function formatProductLabel(product) {
+  return `${product.productName} (ID: ${product.id})`;
+}
+
+function isDivisionInProductScope(divisionId, {
+  productFilterDivisionIds,
+  selectedDivisionIds,
+  divisionOp,
+}) {
+  const normalizedDivisionId = toNumericId(divisionId);
+  if (!productFilterDivisionIds.length) {
+    return true;
+  }
+  if (divisionOp === 'INCLUDE') {
+    return selectedDivisionIds.some((id) => toNumericId(id) === normalizedDivisionId);
+  }
+  return productFilterDivisionIds.some((id) => toNumericId(id) === normalizedDivisionId);
+}
+
+function pruneProductSelections(
+  selectedIds,
+  selectedMeta,
+  scope,
+) {
+  const prunedIds = selectedIds.filter((id) => {
+    const meta = selectedMeta.get(id);
+    if (!meta?.divisionId) return true;
+    return isDivisionInProductScope(meta.divisionId, scope);
+  });
+  const nextMeta = new Map();
+  prunedIds.forEach((id) => {
+    const meta = selectedMeta.get(id);
+    if (meta) nextMeta.set(id, meta);
+  });
+  return { prunedIds, nextMeta };
 }
 
 export default function Step2Products({ state, updateProductRules, info, error }) {
-  const [productCatalog, setProductCatalog] = useState([]);
+  const [manufSearchText, setManufSearchText] = useState('');
   const [manufacturerOptions, setManufacturerOptions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [fetchError, setFetchError] = useState(null);
+  const [manufacturerSearchLoading, setManufacturerSearchLoading] = useState(false);
+  const [manufacturerSearchError, setManufacturerSearchError] = useState(null);
   const [selectedManufacturers, setSelectedManufacturers] = useState([]);
+
+  const [divisionSearchText, setDivisionSearchText] = useState('');
+  const [divisionListItems, setDivisionListItems] = useState([]);
+  const [divisionTotalCount, setDivisionTotalCount] = useState(0);
+  const [divisionPage, setDivisionPage] = useState(0);
+  const [divisionRowsPerPage, setDivisionRowsPerPage] = useState(10);
+  const [divisionLoading, setDivisionLoading] = useState(false);
+  const [allScopeDivisionIds, setAllScopeDivisionIds] = useState([]);
   const [selectedDivisionIds, setSelectedDivisionIds] = useState([]);
-  const [checkedProductIds, setCheckedProductIds] = useState([]);
+  const [selectedDivisionMeta, setSelectedDivisionMeta] = useState(() => new Map());
   const [divisionOp, setDivisionOp] = useState('INCLUDE');
-  const [productOp, setProductOp] = useState('INCLUDE');
-  const [productSearchTerm, setProductSearchTerm] = useState('');
+
+  const [productRuleSearchText, setProductRuleSearchText] = useState('');
+  const [productListItems, setProductListItems] = useState([]);
+  const [productTotalCount, setProductTotalCount] = useState(0);
+  const [productPage, setProductPage] = useState(0);
+  const [productRowsPerPage, setProductRowsPerPage] = useState(10);
+  const [productLoading, setProductLoading] = useState(false);
+  const [selectedProductRuleIds, setSelectedProductRuleIds] = useState([]);
+  const [selectedProductMeta, setSelectedProductMeta] = useState(() => new Map());
+  const [productOp, setProductOp] = useState('EXCLUDE');
+
+  const [fetchError, setFetchError] = useState(null);
 
   const hasInitialized = useRef(false);
   const emitReadyRef = useRef(false);
-  const skipDivisionAutoSelectRef = useRef(false);
-  const skipProductAutoSelectRef = useRef(false);
-  const prevAvailableDivisionIdsRef = useRef([]);
-  const prevVisibleProductIdsRef = useRef([]);
+  const suppressScopeResetRef = useRef(false);
+  const pendingDivisionIdsRef = useRef(null);
+  const pendingProductRuleIdsRef = useRef(null);
+  const prevScopedDivisionKeyRef = useRef('');
+  const selectedProductMetaRef = useRef(selectedProductMeta);
+
+  const selectedProductRuleIdsRef = useRef(selectedProductRuleIds);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setFetchError(null);
+    selectedProductMetaRef.current = selectedProductMeta;
+  }, [selectedProductMeta]);
 
-    Promise.all([
-      axiosInstance.get(ENDPOINTS.PRODUCTS),
-      axiosInstance.get(ENDPOINTS.MANUFACTURERS),
-    ])
-      .then(([productsResponse, manufacturersResponse]) => {
+  useEffect(() => {
+    selectedProductRuleIdsRef.current = selectedProductRuleIds;
+  }, [selectedProductRuleIds]);
+
+  const debouncedManufSearch = useDebounce(manufSearchText, 500);
+  const debouncedDivisionSearch = useDebounce(divisionSearchText, 400);
+  const debouncedProductRuleSearch = useDebounce(productRuleSearchText, 400);
+
+  const selectedManufacturerIds = useMemo(
+    () => selectedManufacturers.map((m) => m.id),
+    [selectedManufacturers],
+  );
+  const debouncedSelectedManufs = useDebounce(selectedManufacturerIds, 800);
+
+  const productFilterDivisionIds = useMemo(() => {
+    if (!selectedDivisionIds.length) {
+      return [];
+    }
+    if (divisionOp === 'INCLUDE') {
+      return selectedDivisionIds;
+    }
+    if (!allScopeDivisionIds.length) {
+      return [];
+    }
+    return allScopeDivisionIds.filter(
+      (id) => !selectedDivisionIds.some((selectedId) => toNumericId(selectedId) === toNumericId(id)),
+    );
+  }, [allScopeDivisionIds, selectedDivisionIds, divisionOp]);
+
+  const productFilterDivisionKey = useMemo(
+    () => `${productFilterDivisionIds.join(',')}|${divisionOp}`,
+    [productFilterDivisionIds, divisionOp],
+  );
+
+  const limitedManufacturerOptions = useMemo(
+    () => manufacturerOptions.slice(0, MANUFACTURER_DROPDOWN_LIMIT),
+    [manufacturerOptions],
+  );
+  const hasMoreManufacturerOptions = manufacturerOptions.length > MANUFACTURER_DROPDOWN_LIMIT;
+
+  const explicitDivisionRules = useMemo(
+    () => buildExplicitScopeRules(
+      selectedDivisionIds,
+      divisionOp,
+      selectedDivisionMeta,
+      (meta) => meta?.divisionName || '',
+    ),
+    [selectedDivisionIds, divisionOp, selectedDivisionMeta],
+  );
+
+  const explicitProductRules = useMemo(
+    () => buildExplicitScopeRules(
+      selectedProductRuleIds,
+      productOp,
+      selectedProductMeta,
+      (meta, id) => meta?.productName || String(id),
+    ),
+    [selectedProductRuleIds, selectedProductMeta, productOp],
+  );
+
+  const pinnedProductIdsKey = useMemo(
+    () => selectedProductRuleIds.join(','),
+    [selectedProductRuleIds],
+  );
+
+  const displayDivisionItems = useMemo(() => {
+    const pageIds = new Set(divisionListItems.map((division) => toNumericId(division.id)));
+    const selectedSet = new Set(selectedDivisionIds.map((id) => toNumericId(id)));
+
+    const offPageSelected = selectedDivisionIds
+      .map((id) => toNumericId(id))
+      .filter((id) => !pageIds.has(id))
+      .map((id) => {
+        const meta = selectedDivisionMeta.get(id);
+        return {
+          id,
+          divisionName: meta?.divisionName || `Division ID: ${id}`,
+          manufacturerId: meta?.manufacturerId,
+        };
+      });
+
+    const onPageSelected = divisionListItems.filter((division) =>
+      selectedSet.has(toNumericId(division.id)));
+    const onPageRest = divisionListItems.filter((division) =>
+      !selectedSet.has(toNumericId(division.id)));
+
+    return [...offPageSelected, ...onPageSelected, ...onPageRest];
+  }, [divisionListItems, selectedDivisionIds, selectedDivisionMeta]);
+
+  const hasManufacturerFilter = selectedManufacturers.length > 0;
+  const hasProductScope = hasManufacturerFilter;
+  const sectionInfo = info ?? 'Search manufacturers to load products. Optionally narrow by divisions or explicit product rules.';
+
+  useEffect(() => {
+    const trimmedSearch = debouncedManufSearch.trim();
+    if (!trimmedSearch) {
+      setManufacturerOptions([]);
+      return undefined;
+    }
+
+    const isNumeric = /^\d+$/.test(trimmedSearch);
+    if (!isNumeric && trimmedSearch.length < 3) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setManufacturerSearchLoading(true);
+    setManufacturerSearchError(null);
+
+    integrationApi.searchManufacturers(trimmedSearch)
+      .then((response) => {
         if (cancelled) return;
-        setProductCatalog(Array.isArray(productsResponse.data) ? productsResponse.data : []);
-        setManufacturerOptions(Array.isArray(manufacturersResponse.data) ? manufacturersResponse.data : []);
+        const items = Array.isArray(response.data) ? response.data : [];
+        setManufacturerOptions(items.map(normalizeManufacturer));
       })
       .catch((err) => {
-        console.error('Failed to load product catalog:', err);
         if (!cancelled) {
-          setFetchError(err.response?.data?.message || 'Failed to load product catalog.');
-          setProductCatalog([]);
+          setManufacturerSearchError(err.response?.data?.message || 'Manufacturer search failed.');
           setManufacturerOptions([]);
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setManufacturerSearchLoading(false);
       });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [debouncedManufSearch]);
 
-  const hasManufacturerFilter = selectedManufacturers.length > 0;
-
-  const availableDivisions = useMemo(() => {
-    if (!hasManufacturerFilter || !productCatalog.length) return [];
-    return divisionsFromPool(manufacturerPool(productCatalog, selectedManufacturers));
-  }, [productCatalog, selectedManufacturers, hasManufacturerFilter]);
-
-  const visibleProducts = useMemo(
-    () => computeVisibleProducts(
-      productCatalog,
-      selectedManufacturers,
-      selectedDivisionIds,
-      divisionOp,
-    ),
-    [productCatalog, selectedManufacturers, selectedDivisionIds, divisionOp],
-  );
-
-  // Rehydrate from saved rules once catalog is ready.
   useEffect(() => {
-    if (!productCatalog.length || !manufacturerOptions.length || hasInitialized.current) return;
+    if (!debouncedSelectedManufs.length) {
+      if (suppressScopeResetRef.current) {
+        return undefined;
+      }
+      setAllScopeDivisionIds([]);
+      setDivisionListItems([]);
+      setDivisionTotalCount(0);
+      setSelectedDivisionIds([]);
+      setSelectedDivisionMeta(new Map());
+      setSelectedProductRuleIds([]);
+      setSelectedProductMeta(new Map());
+      return undefined;
+    }
 
-    hasInitialized.current = true;
+    suppressScopeResetRef.current = false;
+
+    let cancelled = false;
+    integrationApi.getDivisions({ manufacturerIds: debouncedSelectedManufs.map(toNumericId) })
+      .then((response) => {
+        if (cancelled) return;
+        const { content } = unwrapPaginatedResponse(response.data);
+        const ids = content.map((division) => toNumericId(division.id));
+        setAllScopeDivisionIds(ids);
+
+        if (pendingDivisionIdsRef.current) {
+          const { ids: pendingIds, meta } = pendingDivisionIdsRef.current;
+          pendingDivisionIdsRef.current = null;
+          const validIds = pendingIds
+            .map((id) => toNumericId(id))
+            .filter((id) => ids.some((scopeId) => toNumericId(scopeId) === id));
+          setSelectedDivisionIds(validIds);
+          if (meta) setSelectedDivisionMeta(meta);
+          return;
+        }
+
+        setSelectedDivisionIds((prev) => prev
+          .map((id) => toNumericId(id))
+          .filter((id) => ids.some((scopeId) => toNumericId(scopeId) === id)));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFetchError(err.response?.data?.message || 'Failed to load division scope.');
+          setAllScopeDivisionIds([]);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [debouncedSelectedManufs]);
+
+  useEffect(() => {
+    if (!debouncedSelectedManufs.length) {
+      setDivisionListItems([]);
+      setDivisionTotalCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setDivisionLoading(true);
+    setFetchError(null);
+
+    integrationApi.getDivisions({
+      manufacturerIds: debouncedSelectedManufs.map(toNumericId),
+      searchKey: debouncedDivisionSearch,
+      page: divisionPage,
+      size: divisionRowsPerPage,
+    })
+      .then((response) => {
+        if (cancelled) return;
+        const { content, totalElements } = unwrapPaginatedResponse(response.data);
+        const normalized = content.map(normalizeDivision);
+        setDivisionListItems(normalized);
+        setDivisionTotalCount(totalElements);
+        setSelectedDivisionMeta((prev) => {
+          const next = new Map(prev);
+          normalized.forEach((division) => {
+            const id = toNumericId(division.id);
+            if (next.has(id)) {
+              next.set(id, {
+                ...next.get(id),
+                divisionName: division.divisionName,
+                manufacturerId: division.manufacturerId,
+              });
+            }
+          });
+          return next;
+        });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFetchError(err.response?.data?.message || 'Failed to load divisions.');
+          setDivisionListItems([]);
+          setDivisionTotalCount(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDivisionLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [
+    debouncedSelectedManufs,
+    debouncedDivisionSearch,
+    divisionPage,
+    divisionRowsPerPage,
+  ]);
+
+  useEffect(() => {
+    setDivisionPage(0);
+  }, [debouncedDivisionSearch, debouncedSelectedManufs]);
+
+  useEffect(() => {
+    if (!hasProductScope) {
+      prevScopedDivisionKeyRef.current = '';
+      return undefined;
+    }
+
+    const scopeKey = productFilterDivisionKey;
+    if (
+      prevScopedDivisionKeyRef.current
+      && prevScopedDivisionKeyRef.current !== scopeKey
+      && !pendingProductRuleIdsRef.current
+    ) {
+      const scope = {
+        productFilterDivisionIds,
+        selectedDivisionIds,
+        divisionOp,
+      };
+      const { prunedIds, nextMeta } = pruneProductSelections(
+        selectedProductRuleIdsRef.current,
+        selectedProductMetaRef.current,
+        scope,
+      );
+      setSelectedProductRuleIds(prunedIds);
+      setSelectedProductMeta(nextMeta);
+      setProductPage(0);
+    }
+    prevScopedDivisionKeyRef.current = scopeKey;
+    return undefined;
+  }, [hasProductScope, productFilterDivisionKey, productFilterDivisionIds, selectedDivisionIds, divisionOp]);
+
+  useEffect(() => {
+    if (!hasProductScope) {
+      setProductListItems([]);
+      setProductTotalCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setProductLoading(true);
+    setFetchError(null);
+
+    integrationApi.searchProducts({
+      searchKey: debouncedProductRuleSearch,
+      manufacturerIds: debouncedSelectedManufs.map(toNumericId),
+      divisionIds: productFilterDivisionIds.map(toNumericId),
+      page: productPage,
+      size: productRowsPerPage,
+      pinnedProductIds: selectedProductRuleIds,
+    })
+      .then((response) => {
+        if (cancelled) return;
+        const { content, totalElements } = unwrapPaginatedResponse(response.data);
+        const normalized = content.map(normalizeProduct);
+        setProductListItems(normalized);
+        setProductTotalCount(totalElements);
+
+        if (pendingProductRuleIdsRef.current) {
+          const { ids, op, meta } = pendingProductRuleIdsRef.current;
+          pendingProductRuleIdsRef.current = null;
+          setProductOp(op);
+          const enrichedMeta = new Map(meta);
+          normalized.forEach((product) => {
+            if (enrichedMeta.has(product.id)) {
+              enrichedMeta.set(product.id, {
+                ...enrichedMeta.get(product.id),
+                divisionId: toNumericId(product.divisionId),
+              });
+            }
+          });
+          setSelectedProductRuleIds(ids);
+          setSelectedProductMeta(enrichedMeta);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFetchError(err.response?.data?.message || 'Failed to load products.');
+          setProductListItems([]);
+          setProductTotalCount(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProductLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [
+    hasProductScope,
+    debouncedSelectedManufs,
+    productFilterDivisionKey,
+    debouncedProductRuleSearch,
+    productPage,
+    productRowsPerPage,
+    pinnedProductIdsKey,
+  ]);
+
+  useEffect(() => {
+    setProductPage(0);
+  }, [debouncedProductRuleSearch, productFilterDivisionKey]);
+
+  useLayoutEffect(() => {
+    if (hasInitialized.current) return;
+
     const rules = state.productRules || EMPTY_RULES;
-
     if (hasSavedProductRules(rules)) {
-      const mapped = mapSharedRulesToLocalState(rules, productCatalog, manufacturerOptions);
-      skipDivisionAutoSelectRef.current = Boolean(rules.divisionRules?.length);
-      skipProductAutoSelectRef.current = Boolean(rules.productRules?.length);
+      const mapped = mapSharedRulesToLocalState(rules);
       setSelectedManufacturers(mapped.selectedManufacturers);
       setSelectedDivisionIds(mapped.selectedDivisionIds);
-      setCheckedProductIds(mapped.checkedProductIds);
+      setSelectedDivisionMeta(mapped.selectedDivisionMeta || new Map());
       setDivisionOp(mapped.divisionOp);
       setProductOp(mapped.productOp);
-      prevAvailableDivisionIdsRef.current = mapped.prevAvailableDivisionIds;
-      prevVisibleProductIdsRef.current = mapped.prevVisibleProductIds;
-    } else {
-      const allProductIds = productCatalog.map((p) => p.id);
-      setCheckedProductIds(allProductIds);
-      prevVisibleProductIdsRef.current = allProductIds;
+      if (mapped.selectedDivisionIds.length) {
+        pendingDivisionIdsRef.current = {
+          ids: mapped.selectedDivisionIds,
+          meta: mapped.selectedDivisionMeta,
+        };
+        suppressScopeResetRef.current = true;
+      }
+      if (mapped.selectedProductRuleIds.length) {
+        pendingProductRuleIdsRef.current = {
+          ids: mapped.selectedProductRuleIds,
+          op: mapped.productOp,
+          meta: mapped.selectedProductMeta,
+        };
+      }
+      if (mapped.selectedManufacturers.length) {
+        suppressScopeResetRef.current = true;
+      }
+      setManufacturerOptions(mapped.selectedManufacturers);
     }
 
+    hasInitialized.current = true;
     emitReadyRef.current = true;
-  }, [productCatalog, manufacturerOptions, state.productRules]);
+  }, [state.productRules]);
 
-  // When vendor catalog expands, auto-select new divisions + products for active manufacturers.
-  useEffect(() => {
-    if (!hasInitialized.current || skipDivisionAutoSelectRef.current || !hasManufacturerFilter) {
-      return;
-    }
-
-    const availableIds = availableDivisions.map((d) => d.id);
-    const prevAvailable = prevAvailableDivisionIdsRef.current;
-    const catalogExpanded = availableIds.some((id) => !prevAvailable.includes(id));
-
-    if (!catalogExpanded || !availableIds.length) return;
-
-    setSelectedDivisionIds(availableIds);
-    prevAvailableDivisionIdsRef.current = availableIds;
-
-    const allProductIds = computeVisibleProducts(
-      productCatalog,
-      selectedManufacturers,
-      availableIds,
-      divisionOp,
-    ).map((p) => p.id);
-    setCheckedProductIds(allProductIds);
-    prevVisibleProductIdsRef.current = allProductIds;
-  }, [availableDivisions, hasManufacturerFilter, productCatalog, selectedManufacturers, divisionOp]);
-
-  // Auto-select / prune products to match live visible intersection.
-  useEffect(() => {
-    if (!hasInitialized.current) return;
-
-    if (skipProductAutoSelectRef.current) {
-      const visibleIds = visibleProducts.map((p) => p.id);
-      setCheckedProductIds((prev) => prev.filter((id) => visibleIds.includes(id)));
-      prevVisibleProductIdsRef.current = visibleIds;
-      skipProductAutoSelectRef.current = false;
-      return;
-    }
-
-    const visibleIds = visibleProducts.map((p) => p.id);
-    if (!visibleIds.length) {
-      setCheckedProductIds([]);
-      prevVisibleProductIdsRef.current = [];
-      return;
-    }
-
-    setCheckedProductIds(visibleIds);
-    prevVisibleProductIdsRef.current = visibleIds;
-  }, [visibleProducts]);
-
-  // Sync selections to wizard payload — prune orphans on every emit.
   useEffect(() => {
     if (!emitReadyRef.current) return;
-
-    const visibleIdSet = new Set(visibleProducts.map((p) => p.id));
-    const prunedProductIds = checkedProductIds.filter((id) => visibleIdSet.has(id));
-    const availableDivisionIdSet = new Set(availableDivisions.map((d) => d.id));
-    const prunedDivisionIds = selectedDivisionIds.filter((id) => availableDivisionIdSet.has(id));
+    if (
+      suppressScopeResetRef.current
+      && !explicitDivisionRules.length
+      && (state.productRules?.divisionRules?.length ?? 0) > 0
+    ) {
+      return;
+    }
 
     updateProductRules({
-      manufacturers: selectedManufacturers.map((m) => m.id),
-      divisionRules: prunedDivisionIds.map((id) => ({ id, ruleType: divisionOp })),
-      productRules: prunedProductIds.map((id) => ({ id, ruleType: productOp })),
+      manufacturers: selectedManufacturerIds,
+      manufacturerOptions: selectedManufacturers.map((manufacturer) => ({
+        id: manufacturer.id,
+        manufacturerName: manufacturer.manufacturerName,
+      })),
+      divisionRules: explicitDivisionRules,
+      productRules: explicitProductRules,
     });
   }, [
+    selectedManufacturerIds,
     selectedManufacturers,
     selectedDivisionIds,
     divisionOp,
-    checkedProductIds,
-    productOp,
-    visibleProducts,
-    availableDivisions,
+    selectedDivisionMeta,
+    explicitDivisionRules,
+    explicitProductRules,
     updateProductRules,
+    state.productRules?.divisionRules,
   ]);
 
+  const renderManufacturerOption = useCallback((option) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      <Typography variant="body1" fontWeight={500}>
+        {option.manufacturerName}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        ID: {option.id}
+      </Typography>
+    </Box>
+  ), []);
+
   const handleManufacturersChange = useCallback((selected) => {
-    const next = Array.isArray(selected) ? selected : [];
-    setSelectedManufacturers(next);
+    suppressScopeResetRef.current = false;
+    pendingDivisionIdsRef.current = null;
+    setSelectedManufacturers(Array.isArray(selected) ? selected.map(normalizeManufacturer) : []);
+    setSelectedDivisionIds([]);
+    setSelectedDivisionMeta(new Map());
+    setSelectedProductRuleIds([]);
+    setSelectedProductMeta(new Map());
+    setDivisionPage(0);
+    setProductPage(0);
+  }, []);
 
-    if (!next.length) {
-      const allProductIds = productCatalog.map((p) => p.id);
-      setSelectedDivisionIds([]);
-      setCheckedProductIds(allProductIds);
-      prevAvailableDivisionIdsRef.current = [];
-      prevVisibleProductIdsRef.current = allProductIds;
-      return;
-    }
+  const handleManufacturerSearch = useCallback((query) => {
+    setManufSearchText(query);
+  }, []);
 
-    const mfrPool = manufacturerPool(productCatalog, next);
-    const allDivisionIds = divisionsFromPool(mfrPool).map((d) => d.id);
-    const allProductIds = computeVisibleProducts(
-      productCatalog,
-      next,
-      allDivisionIds,
-      divisionOp,
-    ).map((p) => p.id);
-
-    setSelectedDivisionIds(allDivisionIds);
-    setCheckedProductIds(allProductIds);
-    prevAvailableDivisionIdsRef.current = allDivisionIds;
-    prevVisibleProductIdsRef.current = allProductIds;
-  }, [productCatalog, divisionOp]);
-
-  const toggleDivision = (id) => {
+  const toggleDivision = useCallback((division) => {
+    const id = toNumericId(division.id);
     setSelectedDivisionIds((prev) =>
-      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((divisionId) => divisionId !== id) : [...prev, id],
     );
-  };
+    setSelectedDivisionMeta((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.set(id, {
+          id,
+          divisionName: division.divisionName,
+          manufacturerId: division.manufacturerId,
+        });
+      }
+      return next;
+    });
+  }, []);
 
-  const toggleProduct = (id) => {
-    setCheckedProductIds((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
+  const toggleProductRule = useCallback((product) => {
+    const id = product.id;
+    setSelectedProductRuleIds((prev) =>
+      prev.includes(id) ? prev.filter((productId) => productId !== id) : [...prev, id],
     );
-  };
-
-  const selectAllDivisions = () => setSelectedDivisionIds(availableDivisions.map((d) => d.id));
-  const deselectAllDivisions = () => setSelectedDivisionIds([]);
-
-  const filteredProducts = useMemo(() => {
-    const term = productSearchTerm.toLowerCase();
-    if (!term) return visibleProducts;
-    return visibleProducts.filter((p) =>
-      (p.productName || '').toLowerCase().includes(term),
-    );
-  }, [visibleProducts, productSearchTerm]);
-
-  const selectAllProducts = () => {
-    const filteredIds = filteredProducts.map((p) => p.id);
-    setCheckedProductIds((prev) => [...new Set([...prev, ...filteredIds])]);
-  };
-  const deselectAllProducts = () => setCheckedProductIds([]);
-
-  const productsByDivision = filteredProducts.reduce((acc, p) => {
-    const key = p.divisionName || 'Other';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(p);
-    return acc;
-  }, {});
-
-  const resolvedProductIds = productOp === 'INCLUDE'
-    ? checkedProductIds.filter((id) => visibleProducts.some((p) => p.id === id))
-    : visibleProducts.filter((p) => !checkedProductIds.includes(p.id)).map((p) => p.id);
-
-  const selectedProductChips = visibleProducts.filter((p) => resolvedProductIds.includes(p.id));
-
-  const sectionInfo = info ?? 'Add manufacturers to narrow divisions and products. Without manufacturers, all active products are in scope.';
+    setSelectedProductMeta((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.set(id, {
+          id,
+          productName: product.productName,
+          divisionId: toNumericId(product.divisionId),
+        });
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <Box>
-      <WizardSectionTitle
-        title="Applicable Products"
-        info={sectionInfo}
-        mb={2}
-      />
+      <WizardSectionTitle title="Applicable Products" info={sectionInfo} mb={2} />
 
       {fetchError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFetchError(null)}>{fetchError}</Alert>
       )}
-      {loading && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <CircularProgress size={18} />
-          <Typography variant="body2" color="text.secondary">Loading product catalog…</Typography>
-        </Box>
+      {manufacturerSearchError && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setManufacturerSearchError(null)}>
+          {manufacturerSearchError}
+        </Alert>
       )}
 
       <WizardFieldAnchor field="products" error={error}>
-      <Grid container spacing={2.5} sx={{ alignItems: 'flex-start' }}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Box sx={panelSx}>
-            <Box sx={panelHeaderSx}>
-              <Box sx={panelHeaderTitleRowSx}>
-                <Typography variant="h6" fontWeight={700}>
-                  {countedLabel('Manufacturers', selectedManufacturers.length)}
-                </Typography>
-              </Box>
-              <SearchableSelect
-                placeholder="Filter by manufacturer…"
-                isMulti
-                options={manufacturerOptions}
-                value={selectedManufacturers}
-                onChange={handleManufacturersChange}
-                getOptionLabel={(o) => o.manufacturerName || ''}
-                isOptionEqualToValue={(o, v) => o.id === v.id}
-                disabled={!productCatalog.length || loading}
-                maxVisibleChips={2}
-              />
-              <Typography variant="caption" color="text.secondary">
-                {selectedManufacturers.length
-                  ? `${selectedManufacturers.length} manufacturer(s) active`
-                  : `All ${productCatalog.length} active product(s) in scope`}
-              </Typography>
-            </Box>
-          </Box>
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Box sx={panelSx}>
-            <Box sx={panelHeaderSx}>
-              <Box sx={panelHeaderTitleRowSx}>
-                <Typography variant="h6" fontWeight={700}>
-                  {countedLabel('Divisions', selectedDivisionIds.length)}
-                </Typography>
-                <FormControl size="small" sx={ruleSelectSx} disabled={!hasManufacturerFilter}>
-                  <Select value={divisionOp} onChange={(e) => setDivisionOp(e.target.value)}>
-                    <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
-                    <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-              <Box sx={{ flex: 1, minHeight: 40 }} />
-              <Box sx={panelHeaderActionsRowSx}>
-                <Button
-                  size="small"
-                  variant="text"
-                  sx={headerActionButtonSx}
-                  onClick={selectAllDivisions}
-                  disabled={!hasManufacturerFilter || !availableDivisions.length}
-                >
-                  Select All
-                </Button>
-                <Button
-                  size="small"
-                  variant="text"
-                  sx={headerActionButtonSx}
-                  onClick={deselectAllDivisions}
-                  disabled={!hasManufacturerFilter || !availableDivisions.length}
-                >
-                  Clear All
-                </Button>
-              </Box>
-            </Box>
-            <Box sx={listSx}>
-              {!hasManufacturerFilter ? (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    py: 4,
-                    flex: 1,
-                  }}
-                >
-                  <AccountTreeOutlined sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Select manufacturer(s) to view divisions
-                  </Typography>
-                </Box>
-              ) : availableDivisions.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                  No divisions for selected manufacturers
-                </Typography>
-              ) : (
-                <FormGroup>
-                  {availableDivisions.map((d) => (
-                    <FormControlLabel
-                      key={d.id}
-                      control={
-                        <Checkbox
-                          checked={selectedDivisionIds.includes(d.id)}
-                          onChange={() => toggleDivision(d.id)}
-                          size="small"
-                        />
-                      }
-                      label={<Typography variant="body2">{d.divisionName}</Typography>}
-                    />
-                  ))}
-                </FormGroup>
-              )}
-            </Box>
-          </Box>
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Box sx={panelSx}>
-            <Box sx={panelHeaderSx}>
-              <Box sx={panelHeaderTitleRowSx}>
-                <Typography variant="h6" fontWeight={700}>
-                  {countedLabel('Products', resolvedProductIds.length)}
-                </Typography>
-                <FormControl size="small" sx={ruleSelectSx}>
-                  <Select value={productOp} onChange={(e) => setProductOp(e.target.value)}>
-                    <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
-                    <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-              <TextField
-                size="small"
-                variant="outlined"
-                placeholder="Search products..."
-                value={productSearchTerm}
-                onChange={(e) => setProductSearchTerm(e.target.value)}
-                fullWidth
-                sx={{ mb: 0.5 }}
-              />
-              <Box sx={panelHeaderActionsRowSx}>
-                <Button
-                  size="small"
-                  variant="text"
-                  sx={headerActionButtonSx}
-                  onClick={selectAllProducts}
-                  disabled={!filteredProducts.length}
-                >
-                  Select All
-                </Button>
-                <Button
-                  size="small"
-                  variant="text"
-                  sx={headerActionButtonSx}
-                  onClick={deselectAllProducts}
-                  disabled={!visibleProducts.length}
-                >
-                  Clear All
-                </Button>
-              </Box>
-            </Box>
-            <Box sx={listSx}>
-              {visibleProducts.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                  {!productCatalog.length
-                    ? 'No products loaded'
-                    : hasManufacturerFilter && !selectedDivisionIds.length
-                      ? 'Select manufacturer(s) — divisions will auto-select'
-                      : 'No products match current filters'}
-                </Typography>
-              ) : filteredProducts.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                  No products match your search
-                </Typography>
-              ) : (
-                Object.entries(productsByDivision).map(([divName, prods]) => (
-                  <Box key={divName} mb={1.5}>
-                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: 'block', mb: 0.5 }}>
-                      {divName}
-                    </Typography>
-                    <FormGroup>
-                      {prods.map((p) => (
-                        <FormControlLabel
-                          key={p.id}
-                          control={
-                            <Checkbox
-                              checked={checkedProductIds.includes(p.id)}
-                              onChange={() => toggleProduct(p.id)}
-                              size="small"
-                            />
-                          }
-                          label={<Typography variant="body2">{p.productName}</Typography>}
-                        />
-                      ))}
-                    </FormGroup>
-                  </Box>
-                ))
-              )}
-            </Box>
-          </Box>
-        </Grid>
-      </Grid>
-      </WizardFieldAnchor>
-
-      <Box sx={{ mt: 2.5, p: 2, borderRadius: '10px', border: `1px solid ${BRAND.borderLight}`, bgcolor: BRAND.bgGray }}>
-        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-          {resolvedProductIds.length} product(s) selected
-          {productOp === 'EXCLUDE' ? ' (exclude mode — unchecked items kept)' : ''}
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
-          {selectedProductChips.map((p) => (
-            <Chip
-              key={p.id}
-              label={p.productName}
-              size="small"
-              onDelete={() => {
-                if (productOp === 'INCLUDE') {
-                  toggleProduct(p.id);
-                } else {
-                  setCheckedProductIds((prev) => [...prev, p.id]);
-                }
-              }}
+        <Box sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 2,
+          width: '100%',
+          alignItems: 'stretch',
+        }}
+        >
+          <Paper elevation={0} sx={columnPaperSx}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+              1. Select Manufacturers
+            </Typography>
+            <SearchableSelect
+              placeholder="Search manufacturers…"
+              isMulti
+              options={limitedManufacturerOptions}
+              value={selectedManufacturers}
+              onChange={handleManufacturersChange}
+              onSearch={handleManufacturerSearch}
+              loading={manufacturerSearchLoading}
+              getOptionLabel={(option) => `${option.manufacturerName || ''} (ID: ${option.id})`}
+              renderOption={renderManufacturerOption}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              maxVisibleChips={2}
             />
-          ))}
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              {hasMoreManufacturerOptions
+                ? `Showing first ${MANUFACTURER_DROPDOWN_LIMIT} of ${manufacturerOptions.length} matches`
+                : selectedManufacturers.length
+                  ? `${selectedManufacturers.length} selected`
+                  : 'Type to search manufacturers'}
+            </Typography>
+          </Paper>
+
+          <Paper elevation={0} sx={columnPaperSx}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+              2. Select Divisions ({selectedDivisionIds.length})
+            </Typography>
+            <FormControl size="small" sx={{ ...ruleSelectSx, mb: 1 }} disabled={!hasManufacturerFilter}>
+              <Select value={divisionOp} onChange={(event) => setDivisionOp(event.target.value)}>
+                <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
+                <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              variant="outlined"
+              placeholder="Search divisions by name or ID…"
+              value={divisionSearchText}
+              onChange={(event) => setDivisionSearchText(event.target.value)}
+              fullWidth
+              disabled={!hasManufacturerFilter}
+              sx={{ mb: 1 }}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <Button
+                size="small"
+                variant="text"
+                sx={headerActionButtonSx}
+                onClick={() => {
+                  setSelectedDivisionIds([]);
+                  setSelectedDivisionMeta(new Map());
+                }}
+                disabled={!selectedDivisionIds.length}
+              >
+                Clear All
+              </Button>
+            </Box>
+            {divisionLoading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
+                <CircularProgress size={16} />
+                <Typography variant="body2" color="text.secondary">Loading divisions…</Typography>
+              </Box>
+            ) : !hasManufacturerFilter ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+                <AccountTreeOutlined sx={{ fontSize: 36, color: 'text.disabled', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary" align="center">
+                  Select manufacturer(s) first
+                </Typography>
+              </Box>
+            ) : divisionListItems.length === 0 && selectedDivisionIds.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                No divisions match search
+              </Typography>
+            ) : (
+              <ScrollableCheckboxList
+                items={displayDivisionItems}
+                getItemId={(division) => division.id}
+                getItemLabel={formatDivisionLabel}
+                selectedIds={selectedDivisionIds}
+                onToggle={toggleDivision}
+              />
+            )}
+            <TablePagination
+              component="div"
+              count={divisionTotalCount}
+              page={divisionPage}
+              onPageChange={(_, newPage) => setDivisionPage(newPage)}
+              rowsPerPage={divisionRowsPerPage}
+              onRowsPerPageChange={(event) => {
+                setDivisionRowsPerPage(parseInt(event.target.value, 10));
+                setDivisionPage(0);
+              }}
+              rowsPerPageOptions={[10, 25, 50]}
+              sx={{ borderTop: `1px solid ${BRAND.borderLight}`, mt: 'auto' }}
+            />
+          </Paper>
+
+          <Paper elevation={0} sx={columnPaperSx}>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+              3. Product Exceptions ({selectedProductRuleIds.length})
+            </Typography>
+            <FormControl size="small" sx={{ ...ruleSelectSx, mb: 1 }} disabled={!hasProductScope}>
+              <Select
+                value={productOp}
+                onChange={(event) => {
+                  const nextOp = event.target.value;
+                  if (nextOp === productOp) return;
+                  setProductOp(nextOp);
+                  setSelectedProductRuleIds([]);
+                  setSelectedProductMeta(new Map());
+                }}
+              >
+                <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
+                <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size="small"
+              variant="outlined"
+              placeholder="Search products by name or ID…"
+              value={productRuleSearchText}
+              onChange={(event) => setProductRuleSearchText(event.target.value)}
+              fullWidth
+              disabled={!hasProductScope}
+              sx={{ mb: 1 }}
+            />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <Button
+                size="small"
+                variant="text"
+                sx={headerActionButtonSx}
+                onClick={() => {
+                  setSelectedProductRuleIds([]);
+                  setSelectedProductMeta(new Map());
+                }}
+                disabled={!selectedProductRuleIds.length}
+              >
+                Clear All
+              </Button>
+            </Box>
+            {productLoading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
+                <CircularProgress size={16} />
+                <Typography variant="body2" color="text.secondary">Loading products…</Typography>
+              </Box>
+            ) : !hasProductScope ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                Select manufacturer(s) to load products
+              </Typography>
+            ) : productListItems.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                No products match search
+              </Typography>
+            ) : (
+              <ScrollableCheckboxList
+                items={productListItems}
+                getItemId={(product) => product.id}
+                getItemLabel={formatProductLabel}
+                selectedIds={selectedProductRuleIds}
+                onToggle={toggleProductRule}
+              />
+            )}
+            <TablePagination
+              component="div"
+              count={productTotalCount}
+              page={productPage}
+              onPageChange={(_, newPage) => setProductPage(newPage)}
+              rowsPerPage={productRowsPerPage}
+              onRowsPerPageChange={(event) => {
+                setProductRowsPerPage(parseInt(event.target.value, 10));
+                setProductPage(0);
+              }}
+              rowsPerPageOptions={[10, 25, 50]}
+              sx={{ borderTop: `1px solid ${BRAND.borderLight}`, mt: 'auto' }}
+            />
+          </Paper>
         </Box>
-      </Box>
+      </WizardFieldAnchor>
     </Box>
   );
 }

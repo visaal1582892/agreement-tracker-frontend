@@ -1,39 +1,25 @@
-import { Autocomplete, Box, Grid, TextField } from '@mui/material';
+import { Box, Grid, TextField } from '@mui/material';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
+import PartnerLocationFields from './PartnerLocationFields';
 
 export default function AssetRentalGeographyFields({
   asset,
-  stateOptions,
-  selectedStateIds,
+  details = {},
   onUpdateAsset,
   onUpdateDetails,
   fieldErrors = {},
+  onClearFieldError,
 }) {
-  const selectedStates = stateOptions.filter((state) => selectedStateIds.includes(state.id));
-
   return (
     <Box>
       <Grid container spacing={3}>
         <Grid size={12}>
-          <WizardFieldAnchor field="states" error={fieldErrors.states}>
-            <Autocomplete
-              multiple
-              options={stateOptions}
-              value={selectedStates}
-              getOptionLabel={(option) => option.stateName}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((state) => state.id) })}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Region / States *"
-                  size="small"
-                  placeholder="Select states"
-                  error={Boolean(fieldErrors.states)}
-                />
-              )}
-            />
-          </WizardFieldAnchor>
+          <PartnerLocationFields
+            details={details}
+            onUpdateDetails={onUpdateDetails}
+            fieldErrors={fieldErrors}
+            onClearFieldError={onClearFieldError}
+          />
         </Grid>
 
         <Grid size={{ xs: 12, sm: 6 }}>

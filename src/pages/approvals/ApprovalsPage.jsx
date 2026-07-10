@@ -187,7 +187,6 @@ function OperationalRequestDetail({ request, onResolved }) {
         {request.actionType === 'DELETE_GROUP' && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Group: <strong>{request.agreementName}</strong>
-            {request.companyName ? ` · ${request.companyName}` : ''}
           </Typography>
         )}
         {request.requestedTerminationDate && (
@@ -499,7 +498,7 @@ export default function ApprovalsPage() {
                         <StatusBadge status="PENDING_APPROVAL" />
                       </Box>
                     )}
-                    secondary={a.companyName}
+                    secondary={a.agreementGroupName}
                   />
                 ),
               }}
@@ -554,7 +553,7 @@ export default function ApprovalsPage() {
                         />
                       </Box>
                     )}
-                    secondary={`${r.companyName || '—'} · ${r.requestedByName}`}
+                    secondary={`${r.agreementName || '—'} · ${r.requestedByName}`}
                   />
                 ),
               }}

@@ -243,7 +243,7 @@ export default function PriceOffsApprovalHub() {
                     indeterminate={selected.size > 0 && !allSelected}
                     onChange={toggleAll}
                     sx={{ p: 0.5 }}
-                    inputProps={{ 'aria-label': 'Select all pending campaigns' }}
+                    aria-label="Select all pending campaigns"
                   />
                 </StickyCheckboxCell>
               <TableCell sx={filterHeaderFlexCellSx(PRICE_OFF_COLUMN_WIDTHS.product.minWidth)}>

@@ -9,54 +9,14 @@ const create  = (url, data) => axiosInstance.post(url, data).then((r) => r.data)
 const update  = (url, data) => axiosInstance.put(url, data).then((r) => r.data);
 const toggle  = (url)       => axiosInstance.patch(url).then((r) => r.data);
 
-// ── Company Master ──────────────────────────────────────────────────────────
-export const companyApi = {
-  search:       (req) => search(ENDPOINTS.MASTER_COMPANIES_SEARCH, req),
-  list:         ()    => getAll(ENDPOINTS.MASTER_COMPANIES),
-  getById:      (id)  => getById(ENDPOINTS.MASTER_COMPANY_BY_ID(id)),
-  create:       (d)   => create(ENDPOINTS.MASTER_COMPANIES, d),
-  update:       (id, d) => update(ENDPOINTS.MASTER_COMPANY_BY_ID(id), d),
-  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_COMPANY_TOGGLE(id)),
-};
-
-// ── Vendor Master ───────────────────────────────────────────────────────────
-export const vendorApi = {
-  search:       (req) => search(ENDPOINTS.MASTER_VENDORS_SEARCH, req),
-  list:         ()    => getAll(ENDPOINTS.MASTER_VENDORS),
-  getById:      (id)  => getById(ENDPOINTS.MASTER_VENDOR_BY_ID(id)),
-  create:       (d)   => create(ENDPOINTS.MASTER_VENDORS, d),
-  update:       (id, d) => update(ENDPOINTS.MASTER_VENDOR_BY_ID(id), d),
-  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_VENDOR_TOGGLE(id)),
-};
-
-// ── Manufacturer Master ─────────────────────────────────────────────────────
-export const manufacturerApi = {
-  search:       (req) => search(ENDPOINTS.MASTER_MANUFACTURERS_SEARCH, req),
-  list:         ()    => getAll(ENDPOINTS.MASTER_MANUFACTURERS),
-  getById:      (id)  => getById(ENDPOINTS.MASTER_MANUFACTURER_BY_ID(id)),
-  create:       (d)   => create(ENDPOINTS.MASTER_MANUFACTURERS, d),
-  update:       (id, d) => update(ENDPOINTS.MASTER_MANUFACTURER_BY_ID(id), d),
-  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_MANUFACTURER_TOGGLE(id)),
-};
-
-// ── Division Master ─────────────────────────────────────────────────────────
-export const divisionApi = {
-  search:       (req) => search(ENDPOINTS.MASTER_DIVISIONS_SEARCH, req),
-  list:         ()    => getAll(ENDPOINTS.MASTER_DIVISIONS),
-  listByManufacturer: (manufacturerId) => getAll(ENDPOINTS.DIVISIONS(manufacturerId)),
-  getById:      (id)  => getById(ENDPOINTS.MASTER_DIVISION_BY_ID(id)),
-  create:       (d)   => create(ENDPOINTS.MASTER_DIVISIONS, d),
-  update:       (id, d) => update(ENDPOINTS.MASTER_DIVISION_BY_ID(id), d),
-  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_DIVISION_TOGGLE(id)),
-};
-
-// ── Product Master ──────────────────────────────────────────────────────────
-export const productApi = {
-  search:       (req) => search(ENDPOINTS.MASTER_PRODUCTS_SEARCH, req),
-  getById:      (id)  => getById(ENDPOINTS.MASTER_PRODUCT_BY_ID(id)),
-  create:       (d)   => create(ENDPOINTS.MASTER_PRODUCTS, d),
-  update:       (id, d) => update(ENDPOINTS.MASTER_PRODUCT_BY_ID(id), d),
-  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_PRODUCT_TOGGLE(id)),
+// ── Agreement Groups ────────────────────────────────────────────────────────
+export const agreementGroupApi = {
+  search:       (req) => search(ENDPOINTS.MASTER_AGREEMENT_GROUPS_SEARCH, req),
+  list:         ()    => getAll(ENDPOINTS.MASTER_AGREEMENT_GROUPS),
+  getById:      (id)  => getById(ENDPOINTS.MASTER_AGREEMENT_GROUP_BY_ID(id)),
+  create:       (d)   => create(ENDPOINTS.MASTER_AGREEMENT_GROUPS, d),
+  update:       (id, d) => update(ENDPOINTS.MASTER_AGREEMENT_GROUP_BY_ID(id), d),
+  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_AGREEMENT_GROUP_TOGGLE(id)),
 };
 
 // ── Income Types ────────────────────────────────────────────────────────────
@@ -77,6 +37,16 @@ export const stateApi = {
   create:       (d)   => create(ENDPOINTS.MASTER_STATES, d),
   update:       (id, d) => update(ENDPOINTS.MASTER_STATE_BY_ID(id), d),
   toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_STATE_TOGGLE(id)),
+};
+
+// ── Price Off Locations ─────────────────────────────────────────────────────
+export const priceOffLocationApi = {
+  search:       (req) => search(ENDPOINTS.MASTER_PRICE_OFF_LOCATIONS_SEARCH, req),
+  list:         ()    => getAll(ENDPOINTS.MASTER_PRICE_OFF_LOCATIONS),
+  getById:      (id)  => getById(ENDPOINTS.MASTER_PRICE_OFF_LOCATION_BY_ID(id)),
+  create:       (d)   => create(ENDPOINTS.MASTER_PRICE_OFF_LOCATIONS, d),
+  update:       (id, d) => update(ENDPOINTS.MASTER_PRICE_OFF_LOCATION_BY_ID(id), d),
+  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_PRICE_OFF_LOCATION_TOGGLE(id)),
 };
 
 // ── Agreement Types ─────────────────────────────────────────────────────────

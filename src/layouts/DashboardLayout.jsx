@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: SpaceDashboardOutlined, path: ROUTES.DASHBOARD, rights: [RIGHTS.DASHBOARD_VIEW] },
   { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS_GROUPS, rights: [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL] },
   { label: 'Approvals', icon: CheckCircleOutlined, path: ROUTES.APPROVALS, rights: [RIGHTS.AGREEMENT_APPROVE] },
+  // TODO: uncomment when price-offs is ready
   { label: 'Price Offs', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS, rights: [RIGHTS.PRICE_OFF_MANAGE] },
   { label: 'Price Off Approvals', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS_APPROVALS, rights: [RIGHTS.PRICE_OFF_APPROVE] },
   { label: 'Users', icon: ManageAccountsOutlined, path: ROUTES.ADMIN_USERS, rights: [RIGHTS.ADMIN_USERS] },

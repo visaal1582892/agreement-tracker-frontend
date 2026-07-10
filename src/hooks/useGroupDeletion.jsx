@@ -79,7 +79,7 @@ export function useGroupDeletion({ onSuccess }) {
   const startDelete = useCallback(async (targetGroup) => {
     try {
       const { data } = await axiosInstance.get(
-        ENDPOINTS.COMPANY_AGREEMENT_GROUP_DELETION_STATUS(targetGroup.id),
+        ENDPOINTS.AGREEMENT_GROUP_DELETION_STATUS(targetGroup.id),
       );
       const status = data.status;
 
@@ -116,11 +116,11 @@ export function useGroupDeletion({ onSuccess }) {
     try {
       if (deleteFlow.modal === 'approval') {
         await axiosInstance.post(
-          ENDPOINTS.COMPANY_AGREEMENT_GROUP_DELETION_REQUEST(deleteFlow.group.id),
+          ENDPOINTS.AGREEMENT_GROUP_DELETION_REQUEST(deleteFlow.group.id),
           { reason: deleteFlow.reason.trim() },
         );
       } else {
-        await axiosInstance.delete(ENDPOINTS.COMPANY_AGREEMENT_GROUP_BY_ID(deleteFlow.group.id), {
+        await axiosInstance.delete(ENDPOINTS.AGREEMENT_GROUP_BY_ID(deleteFlow.group.id), {
           params: { reason: deleteFlow.reason.trim() },
         });
       }

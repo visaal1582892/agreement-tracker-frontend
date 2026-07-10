@@ -3,6 +3,7 @@ import { fetchStoreMappings } from '../api/storeMappingApi';
 import { formatLocalDateString } from './dateUtils';
 import { isAdHocIncomeType, isAssetRentalIncomeType, isCommercialContractsIncomeType, isDataFeeIncomeType, resolveWizardIncomeContext } from './incomeTypeUtils';
 import { sanitizeAgreementPayload } from './incomeTypePayloadUtils';
+import { buildApiProductRulesPayload } from './productScopeUtils';
 import { CALCULATION_BASIS } from '../constants/calculationBasis';
 import {
   deriveHybridFlags,
@@ -157,7 +158,9 @@ export function buildAgreementDetailsPayload(agreement) {
       startDate: formatLocalDateString(scrubbedDetails.startDate),
       expiryDate: formatLocalDateString(scrubbedDetails.expiryDate),
       notes: scrubbedDetails.notes || null,
-      stateIds: scrubbedDetails.stateIds?.length ? scrubbedDetails.stateIds : [],
+      geographyMode: scrubbedDetails.geographyMode || 'MIXED',
+      partnerStates: Array.isArray(scrubbedDetails.partnerStates) ? scrubbedDetails.partnerStates : [],
+      partnerCities: Array.isArray(scrubbedDetails.partnerCities) ? scrubbedDetails.partnerCities : [],
       adhocSubType: scrubbedDetails.adhocSubType || null,
       quantityCap: scrubbedDetails.quantityCap !== '' && scrubbedDetails.quantityCap != null
         ? scrubbedDetails.quantityCap
@@ -199,13 +202,14 @@ export function buildAgreementDetailsPayload(agreement) {
   };
 }
 
+
 export function buildStep1CreatePayload(state) {
   return {
-    companyId: state.companyId,
-    companyAgreementGroupId: state.companyAgreementGroupId || null,
-    newCompanyAgreementGroupName: state.newCompanyAgreementGroupName?.trim() || null,
+    agreementGroupId: state.agreementGroupId || null,
+    newAgreementGroupName: state.newAgreementGroupName?.trim() || null,
     vendorIds: state.vendorIds ?? [],
-    productRules: state.productRules ?? {},
+    vendors: state.vendors ?? [],
+    productRules: buildApiProductRulesPayload(state.productRules),
     agreements: [],
   };
 }
@@ -213,11 +217,11 @@ export function buildStep1CreatePayload(state) {
 export function buildStep1UpdatePayload(state, { requiresReapproval = false } = {}) {
   const { details, commercials, asset } = buildAgreementDetailsPayload(state.agreement);
   const payload = {
-    companyId: state.companyId,
-    companyAgreementGroupId: state.companyAgreementGroupId || null,
-    newCompanyAgreementGroupName: state.newCompanyAgreementGroupName?.trim() || null,
+    agreementGroupId: state.agreementGroupId || null,
+    newAgreementGroupName: state.newAgreementGroupName?.trim() || null,
     vendorIds: state.vendorIds ?? [],
-    productRules: state.productRules ?? {},
+    vendors: state.vendors ?? [],
+    productRules: buildApiProductRulesPayload(state.productRules),
     details,
     commercials,
     asset,
@@ -241,12 +245,8 @@ export function buildSanitizedStep1UpdatePayload(state, options = {}) {
 }
 
 export function validateStep1Fields(state, enqueueSnackbar) {
-  if (!state.companyId) {
-    enqueueSnackbar('Company is required', { variant: 'warning' });
-    return false;
-  }
-  if (!state.companyAgreementGroupId && !state.newCompanyAgreementGroupName?.trim()) {
-    enqueueSnackbar('Select or enter a company agreement group', { variant: 'warning' });
+  if (!state.agreementGroupId && !state.newAgreementGroupName?.trim()) {
+    enqueueSnackbar('Select or enter an agreement group', { variant: 'warning' });
     return false;
   }
   return validateFoundationalMetadata(state, enqueueSnackbar);
@@ -317,6 +317,27 @@ function collectSettlementRoutingFieldErrors(details, isAssetRental) {
   return errors;
 }
 
+function hasPartnerLocation(details) {
+  const states = Array.isArray(details?.partnerStates) ? details.partnerStates : [];
+  const cities = Array.isArray(details?.partnerCities) ? details.partnerCities : [];
+  if (!states.length && !cities.length) return false;
+  const wholeStateCodes = new Set(states.map((s) => s?.code).filter(Boolean));
+  return !cities.some((c) => c?.stateCode && wholeStateCodes.has(c.stateCode));
+}
+
+function applyPartnerLocationFieldErrors(fieldErrors, details, incomeLabel) {
+  const states = Array.isArray(details?.partnerStates) ? details.partnerStates : [];
+  const cities = Array.isArray(details?.partnerCities) ? details.partnerCities : [];
+  if (!states.length && !cities.length) {
+    fieldErrors.partnerState = `Select at least one state or city for ${incomeLabel}`;
+    return;
+  }
+  const wholeStateCodes = new Set(states.map((s) => s?.code).filter(Boolean));
+  const conflict = cities.find((c) => c?.stateCode && wholeStateCodes.has(c.stateCode));
+  if (conflict) {
+    fieldErrors.partnerCity = `Cannot select both whole state and cities for ${conflict.stateName || conflict.stateCode}`;
+  }
+}
 export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAgreement = null) {
   const fieldErrors = {};
   const ctx = resolveWizardIncomeContext(state, sourceAgreement, incomeTypes);
@@ -354,8 +375,8 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
     if (asset?.assetCategory !== 'ACTIVITY' && !asset?.assetType?.trim()) {
       fieldErrors.assetType = 'Asset type is required for Asset Rentals';
     }
-    if (!details.stateIds?.length) {
-      fieldErrors.states = 'Select at least one state for Asset Rentals';
+    if (asset?.assetCategory !== 'ACTIVITY') {
+      applyPartnerLocationFieldErrors(fieldErrors, details, 'Asset Rentals');
     }
     const storeCountError = validateParticipatingStoreCount(asset);
     if (storeCountError) {
@@ -365,20 +386,32 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
     return fieldErrors;
   }
 
-  if (isDataFee && !details.stateIds?.length) {
-    fieldErrors.states = 'Select at least one state for Data Fee';
+  if (isDataFee) {
+    applyPartnerLocationFieldErrors(fieldErrors, details, 'Data Fee');
+  }
+
+  const isCommercialContracts = isCommercialContractsIncomeType(
+    ctx.incomeTypes,
+    ctx.incomeTypeId,
+    ctx.incomeTypeName,
+  );
+  if (isCommercialContracts) {
+    applyPartnerLocationFieldErrors(fieldErrors, details, 'Commercial Contracts');
   }
 
   if (isAdHoc) {
-    if (!productRules?.productRules?.length) {
-      fieldErrors.products = 'Select at least one product';
+    if (!productRules?.manufacturers?.length) {
+      fieldErrors.products = 'Select at least one manufacturer';
     }
     Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
     return fieldErrors;
   }
 
-  if (!productRules?.productRules?.length) {
-    fieldErrors.products = 'Select at least one product';
+  if (!productRules?.manufacturers?.length) {
+    fieldErrors.products = 'Select at least one manufacturer';
+  }
+  if (!productRules?.divisionRules?.length) {
+    fieldErrors.products = fieldErrors.products || 'Select at least one division';
   }
   Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
   return fieldErrors;
@@ -396,21 +429,17 @@ function resolveCommercialEnableFlags(commercials = {}) {
   };
 }
 
-function resolveSelectedStateNames(selectedStateIds, sourceAgreement) {
-  return (selectedStateIds ?? []).map((stateId) => {
-    const fromVersion = sourceAgreement?.states?.find(
-      (state) => Number(state.id) === Number(stateId),
-    )?.stateName;
-    return fromVersion || `State ${stateId}`;
-  });
-}
-
 export async function getAssetRentalUnmappedStatesWarning(
   agreementVersionId,
-  selectedStateIds,
+  partnerStates,
   sourceAgreement = null,
 ) {
-  if (!agreementVersionId || !selectedStateIds?.length) {
+  const states = (Array.isArray(partnerStates) && partnerStates.length
+    ? partnerStates
+    : (sourceAgreement?.partnerStates ?? []))
+    .map((s) => s?.name)
+    .filter(Boolean);
+  if (!agreementVersionId || !states.length) {
     return null;
   }
 
@@ -419,12 +448,11 @@ export async function getAssetRentalUnmappedStatesWarning(
     const mappedStateNames = new Set(
       (mappedStores ?? []).map((store) => store.stateName).filter(Boolean),
     );
-    const selectedStateNames = resolveSelectedStateNames(selectedStateIds, sourceAgreement);
-    const unmappedStates = selectedStateNames.filter((name) => !mappedStateNames.has(name));
-    if (unmappedStates.length === 0) {
+    const unmapped = states.filter((name) => !mappedStateNames.has(name));
+    if (!unmapped.length) {
       return null;
     }
-    return `Advancing to Review. Note: No retail outlets were mapped for [${unmappedStates.join(', ')}].`;
+    return `Advancing to Review. Note: No retail outlets were mapped for [${unmapped.join(', ')}].`;
   } catch {
     return null;
   }
@@ -637,8 +665,8 @@ function validateAssetRentalConfigurationFields(agreement, enqueueSnackbar) {
     enqueueSnackbar('Asset type is required for Asset Rentals', { variant: 'warning' });
     return false;
   }
-  if (!details?.stateIds?.length) {
-    enqueueSnackbar('Select at least one state for Asset Rentals', { variant: 'warning' });
+  if (asset?.assetCategory !== 'ACTIVITY' && !hasPartnerLocation(details)) {
+    enqueueSnackbar('Select state and city for Asset Rentals', { variant: 'warning' });
     return false;
   }
   const storeCountError = validateParticipatingStoreCount(asset);
@@ -710,7 +738,9 @@ export function buildContractDetailsSnapshot(agreement) {
     startDate: agreement.startDate ?? agreement.details?.startDate ?? null,
     expiryDate: agreement.expiryDate ?? agreement.details?.expiryDate ?? null,
     notes: agreement.notes ?? agreement.details?.notes ?? '',
-    stateIds: agreement.stateIds ?? agreement.details?.stateIds ?? [],
+    geographyMode: agreement.geographyMode ?? agreement.details?.geographyMode ?? 'MIXED',
+    partnerStates: agreement.partnerStates ?? agreement.details?.partnerStates ?? [],
+    partnerCities: agreement.partnerCities ?? agreement.details?.partnerCities ?? [],
   };
 }
 

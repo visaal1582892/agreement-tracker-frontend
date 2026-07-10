@@ -180,8 +180,23 @@ export default function WizardReviewContent({
   const enableFlat = commercials.enableFlatBaseline ?? hybridFlags.enableFlatBaseline;
   const enableSlab = commercials.enableSlabIncentives ?? hybridFlags.enableSlabIncentives;
   const isQps = profile === 'AD_HOC';
-  const stateNames = version?.states?.map((s) => s.stateName).join(', ')
-    || (details.stateIds?.length ? `${details.stateIds.length} state(s) selected` : '—');
+  const locationLabel = (() => {
+    const states = version?.partnerStates ?? details.partnerStates ?? [];
+    const cities = version?.partnerCities ?? details.partnerCities ?? [];
+    const stateParts = (states ?? [])
+      .map((item) => (item?.code ? `${item.name} (${item.code})` : item?.name))
+      .filter(Boolean)
+      .map((label) => `State: ${label}`);
+    const cityParts = (cities ?? [])
+      .map((item) => {
+        const city = item?.code ? `${item.name} (${item.code})` : item?.name;
+        const parent = item?.stateName || item?.stateCode;
+        return city ? `City: ${city}${parent ? ` · ${parent}` : ''}` : null;
+      })
+      .filter(Boolean);
+    const all = [...stateParts, ...cityParts];
+    return all.length ? all.join('; ') : '—';
+  })();
   const calculationBasis = details.calculationBasis ?? version?.calculationBasis;
   const assetCategory = resolveAssetValue(asset, versionAsset, 'assetCategory');
   const isActivityAsset = assetCategory === 'ACTIVITY';
@@ -278,9 +293,8 @@ export default function WizardReviewContent({
   return (
     <Box>
       <Box sx={REVIEW_GRID_SX}>
-        <CollapsibleSection title="Partner Details" defaultExpanded sx={REVIEW_SECTION_SX}>
-          <ReviewRow label="Company" value={wizardState?.companyName} />
-          <ReviewRow label="Agreement Group" value={wizardState?.companyAgreementGroupName} />
+        <CollapsibleSection title="Agreement Group" defaultExpanded sx={REVIEW_SECTION_SX}>
+          <ReviewRow label="Agreement Group" value={wizardState?.agreementGroupName || wizardState?.newAgreementGroupName} />
         </CollapsibleSection>
 
         <CollapsibleSection title="Agreement Classification" defaultExpanded sx={REVIEW_SECTION_SX}>
@@ -365,7 +379,7 @@ export default function WizardReviewContent({
           <CollapsibleSection title="Geography & Limits" defaultExpanded sx={REVIEW_SECTION_SX}>
             {profile === 'ASSET_RENTAL' && (
               <>
-                <ReviewRow label="States" value={stateNames} />
+                <ReviewRow label="Location" value={locationLabel} />
                 <Box sx={{ py: 0.75 }}>
                   <Typography variant="body2" color="text.secondary" sx={{ width: 180, flexShrink: 0, display: 'inline-block', verticalAlign: 'top' }}>
                     Participating Stores
@@ -381,7 +395,7 @@ export default function WizardReviewContent({
               </>
             )}
             {(profile === 'COMMERCIAL_CONTRACTS' || profile === 'DATA_FEE') && (
-              <ReviewRow label="States" value={stateNames} />
+              <ReviewRow label="Location" value={locationLabel} />
             )}
           </CollapsibleSection>
         )}

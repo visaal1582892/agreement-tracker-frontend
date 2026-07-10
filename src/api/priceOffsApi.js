@@ -9,12 +9,47 @@ export async function downloadPriceOffTemplate() {
   return response.data;
 }
 
-export async function uploadPriceOffCampaigns(file) {
+export function isPriceOffValidationErrorBlob(error) {
+  const blob = error?.response?.data;
+  if (!(blob instanceof Blob)) {
+    return false;
+  }
+  const type = blob.type || '';
+  return type.includes('spreadsheetml')
+    || type.includes('octet-stream')
+    || error?.response?.status === 422;
+}
+
+function parseUploadSummaryHeader(headers) {
+  const raw = headers?.['x-upload-summary'];
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function previewPriceOffCampaigns(file) {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await axiosInstance.post(ENDPOINTS.PRICE_OFFS_UPLOAD, formData, {
+  const response = await axiosInstance.post(ENDPOINTS.PRICE_OFFS_PREVIEW, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
+  return response.data;
+}
+
+export async function commitPriceOffCampaigns(rows) {
+  const response = await axiosInstance.post(ENDPOINTS.PRICE_OFFS_COMMIT, { rows });
+  return response.data;
+}
+
+export async function uploadPriceOffCampaigns(file) {
+  return previewPriceOffCampaigns(file);
+}
+
+export async function fetchPriceOffLocations() {
+  const response = await axiosInstance.get(ENDPOINTS.PRICE_OFFS_LOCATIONS);
   return response.data;
 }
 
@@ -54,6 +89,11 @@ export async function fetchPriceOffCampaigns({
 
 export async function fetchPriceOffCampaign(id) {
   const response = await axiosInstance.get(ENDPOINTS.PRICE_OFF_BY_ID(id));
+  return response.data;
+}
+
+export async function updatePriceOffCampaign(id, payload) {
+  const response = await axiosInstance.put(ENDPOINTS.PRICE_OFF_BY_ID(id), payload);
   return response.data;
 }
 
@@ -116,17 +156,36 @@ export function formatRupee(value) {
   if (value == null || value === '') return '—';
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return '—';
-  return `₹${numeric.toFixed(2)}`;
+  return `₹ ${numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function formatOfferValue(value, discountType) {
-  if (value == null || value === '') return '—';
-  return discountType === 'DISC_PERCENT' ? formatPercent(value) : formatRupee(value);
+export function formatCreditNote(value) {
+  return formatRupee(value);
+}
+
+export function resolveLocationAllocation(row, locationCode) {
+  const allocations = row?.locationAllocations;
+  if (!allocations) return 0;
+  if (Array.isArray(allocations)) {
+    const match = allocations.find((item) => item.locationCode === locationCode);
+    return match?.allocatedQty ?? 0;
+  }
+  return allocations[locationCode] ?? 0;
 }
 
 export function formatFinalOffer(value, discountType) {
   if (value == null || value === '') return '—';
-  return discountType === 'DISC_PERCENT' ? formatPercent(value) : formatRupee(value);
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return '—';
+  if (discountType === 'DISC_PERCENT') {
+    const percent = numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
+    return `${percent.toFixed(2)}%`;
+  }
+  return formatRupee(value);
+}
+
+export function formatOfferValue(value, discountType) {
+  return formatFinalOffer(value, discountType);
 }
 
 export async function extractPriceOffError(err, fallback = 'Request failed') {

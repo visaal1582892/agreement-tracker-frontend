@@ -86,6 +86,7 @@ export default function AgreementEditPage() {
   const [sourceAgreement, setSourceAgreement] = useState(null);
   const [draftAgreementId, setDraftAgreementId] = useState(null);
   const [versionSourceId, setVersionSourceId] = useState(null);
+
   const [reapprovalBaseline, setReapprovalBaseline] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -163,7 +164,7 @@ export default function AgreementEditPage() {
           loaded,
           loaded.vendors?.map((vendor) => vendor.vendorId),
           {
-            manufacturers: loaded.manufacturerIds ?? [],
+            manufacturers: loaded.manufacturers?.map((m) => m.id) ?? loaded.manufacturerIds ?? [],
             divisionRules: loaded.divisionRules ?? [],
             productRules: loaded.productRules ?? [],
           },
@@ -356,8 +357,7 @@ export default function AgreementEditPage() {
     try {
       await persistDraft({ validateStep2: true });
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, {
-        companyId: state.companyId,
-        companyAgreementGroupId: state.companyAgreementGroupId,
+        agreementGroupId: state.agreementGroupId,
         vendorIds: [],
         productRules: { manufacturers: [], divisionRules: [], productRules: [] },
         agreements: [],
@@ -455,10 +455,12 @@ export default function AgreementEditPage() {
       const incomeTypeId = state.agreement?.details?.incomeTypeId ?? sourceAgreement?.incomeTypeId;
       const incomeTypeName = state.agreement?.details?.incomeTypeName ?? sourceAgreement?.incomeTypeName;
       if (isAssetRentalIncomeType([], incomeTypeId, incomeTypeName)) {
-        const selectedStateIds = state.agreement?.details?.stateIds ?? sourceAgreement?.stateIds ?? [];
+        const partnerStates = state.agreement?.details?.partnerStates
+          ?? sourceAgreement?.partnerStates
+          ?? [];
         const softWarning = await getAssetRentalUnmappedStatesWarning(
           draftAgreementId,
-          selectedStateIds,
+          partnerStates,
           sourceAgreement,
         );
         if (softWarning) {
@@ -553,9 +555,9 @@ export default function AgreementEditPage() {
     }
 
     if (isFreshDraftWizard) {
-      const groupId = state.companyAgreementGroupId;
+      const groupId = state.agreementGroupId;
       if (!groupId) {
-        enqueueSnackbar('Company agreement group is required for bulk submit', { variant: 'warning' });
+        enqueueSnackbar('Agreement group is required for bulk submit', { variant: 'warning' });
         return;
       }
 

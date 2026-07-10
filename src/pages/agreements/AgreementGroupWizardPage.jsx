@@ -472,8 +472,7 @@ export default function AgreementGroupWizardPage() {
     try {
       await persistDraft({ validateStep2: true });
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, {
-        companyId: state.companyId,
-        companyAgreementGroupId: state.companyAgreementGroupId,
+        agreementGroupId: state.agreementGroupId,
         vendorIds: [],
         productRules: { manufacturers: [], divisionRules: [], productRules: [] },
         agreements: [],
@@ -580,10 +579,12 @@ export default function AgreementGroupWizardPage() {
       const incomeTypeId = state.agreement?.details?.incomeTypeId ?? sourceAgreement?.incomeTypeId;
       const incomeTypeName = state.agreement?.details?.incomeTypeName ?? sourceAgreement?.incomeTypeName;
       if (isAssetRentalIncomeType([], incomeTypeId, incomeTypeName)) {
-        const selectedStateIds = state.agreement?.details?.stateIds ?? sourceAgreement?.stateIds ?? [];
+        const partnerStates = state.agreement?.details?.partnerStates
+          ?? sourceAgreement?.partnerStates
+          ?? [];
         const softWarning = await getAssetRentalUnmappedStatesWarning(
           draftAgreementId,
-          selectedStateIds,
+          partnerStates,
           sourceAgreement,
         );
         if (softWarning) {

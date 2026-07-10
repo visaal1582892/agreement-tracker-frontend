@@ -3,9 +3,20 @@ import {
   Box, TextField, Typography, CircularProgress, Alert, alpha, Collapse,
 } from '@mui/material';
 import { PlaylistAdd, Check } from '@mui/icons-material';
-import axiosInstance from '../../api/axiosInstance';
-import { ENDPOINTS } from '../../config/endpoints';
+import { integrationApi } from '../../api/integrationApi';
 import { BRAND } from '../../config/theme';
+
+function toNumericId(id) {
+  const parsed = Number(id);
+  return Number.isNaN(parsed) ? id : parsed;
+}
+
+function normalizeVendor(item) {
+  return {
+    id: toNumericId(item.vendorId ?? item.id),
+    vendorName: item.vendorName || '',
+  };
+}
 
 export default function BulkVendorInput({ selectedVendors, onChange }) {
   const [expanded, setExpanded] = useState(false);
@@ -23,19 +34,26 @@ export default function BulkVendorInput({ selectedVendors, onChange }) {
     setLoading(true);
     setError('');
     try {
-      const ids = pasteText.split(',').map((s) => s.trim()).filter(Boolean);
-      const { data } = await axiosInstance.get(ENDPOINTS.VENDORS, {
-        params: { ids: ids.join(',') },
-      });
-      const resolved = data.filter((v) => ids.includes(v.vendorCode) || ids.includes(String(v.id)));
-      const merged = [...selectedVendors];
-      resolved.forEach((v) => {
-        if (!merged.some((m) => m.id === v.id)) merged.push(v);
+      const rawIds = pasteText.split(',').map((value) => value.trim()).filter(Boolean);
+      const invalidIds = rawIds.filter((value) => !/^\d+$/.test(value));
+      if (invalidIds.length > 0) {
+        setError('Only numeric partner IDs are supported.');
+        return;
+      }
+
+      const ids = rawIds.map((value) => Number(value));
+      const { data } = await integrationApi.getVendorsByIds(ids);
+      const resolved = (Array.isArray(data) ? data : []).map(normalizeVendor);
+      const merged = [...selectedVendors.map(normalizeVendor)];
+      resolved.forEach((vendor) => {
+        if (!merged.some((existing) => existing.id === vendor.id)) {
+          merged.push(vendor);
+        }
       });
       onChange(merged);
       handleClose();
     } catch {
-      setError('Could not resolve vendor codes. Check and retry.');
+      setError('Could not resolve vendor IDs. Check and retry.');
     } finally {
       setLoading(false);
     }
@@ -57,7 +75,7 @@ export default function BulkVendorInput({ selectedVendors, onChange }) {
         }}
       >
         <PlaylistAdd sx={{ fontSize: 15 }} />
-        {expanded ? 'Hide paste field' : 'Paste vendor codes'}
+        {expanded ? 'Hide paste field' : 'Paste vendor IDs'}
       </Box>
 
       <Collapse in={expanded}>
@@ -69,14 +87,14 @@ export default function BulkVendorInput({ selectedVendors, onChange }) {
           bgcolor: alpha(BRAND.red, 0.02),
         }}>
           <Typography sx={{ fontSize: '0.75rem', color: '#64748B', mb: 1 }}>
-            Comma-separated codes — e.g. V001, V002, V003
+            Comma-separated partner IDs — e.g. 101, 102, 103
           </Typography>
           <TextField
             multiline
             rows={2}
             fullWidth
             autoFocus
-            placeholder="V001, V002, V003"
+            placeholder="101, 102, 103"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             size="small"

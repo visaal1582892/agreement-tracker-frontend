@@ -65,56 +65,38 @@ export const ENDPOINTS = {
   STORE_MAPPING_UPLOAD: (id) => `${BASE}/agreement-versions/${id}/stores/upload`,
   STORE_MAPPINGS: (id) => `${BASE}/agreement-versions/${id}/stores`,
 
-  // Company agreement groups
-  COMPANY_AGREEMENT_GROUPS: (companyId) => `${BASE}/companies/${companyId}/agreement-groups`,
-  COMPANY_AGREEMENT_GROUPS_ALL: `${BASE}/company-agreement-groups`,
-  COMPANY_AGREEMENT_GROUP_BY_ID: (groupId) => `${BASE}/company-agreement-groups/${groupId}`,
-  COMPANY_AGREEMENT_GROUP_DELETION_STATUS: (groupId) =>
-    `${BASE}/company-agreement-groups/${groupId}/deletion-status`,
-  COMPANY_AGREEMENT_GROUP_DELETION_REQUEST: (groupId) =>
-    `${BASE}/company-agreement-groups/${groupId}/deletion-requests`,
-  COMPANY_AGREEMENT_GROUP_SUBMIT: (groupId) =>
-    `${BASE}/company-agreement-groups/${groupId}/submit-for-approval`,
+  // Agreement groups
+  AGREEMENT_GROUPS: `${BASE}/agreement-groups`,
+  AGREEMENT_GROUP_BY_ID: (groupId) => `${BASE}/agreement-groups/${groupId}`,
+  AGREEMENT_GROUP_DELETION_STATUS: (groupId) =>
+    `${BASE}/agreement-groups/${groupId}/deletion-status`,
+  AGREEMENT_GROUP_DELETION_REQUEST: (groupId) =>
+    `${BASE}/agreement-groups/${groupId}/deletion-requests`,
+  AGREEMENT_GROUP_SUBMIT: (groupId) =>
+    `${BASE}/agreement-groups/${groupId}/submit-for-approval`,
 
   // Dashboard
   DASHBOARD_STATS: `${BASE}/dashboard/stats`,
   DASHBOARD_EXPIRING: `${BASE}/dashboard/expiring`,
 
   // Master Data — simple dropdowns (backward compat with wizard)
-  COMPANIES: `${BASE}/master/companies`,
   INCOME_TYPES: `${BASE}/master/income-types`,
   AGREEMENT_TYPES: `${BASE}/master/agreement-types`,
   STATES: `${BASE}/master/states`,
-  VENDORS: `${BASE}/master/vendors`,
-  MANUFACTURERS: `${BASE}/master/manufacturers`,
-  DIVISIONS: (mfrId) => `${BASE}/master/manufacturers/${mfrId}/divisions`,
-  PRODUCTS: `${BASE}/master/products`,
+
+  INTEGRATION_MANUFACTURERS: `${BASE}/integration/manufacturers`,
+  INTEGRATION_DIVISIONS: `${BASE}/integration/divisions`,
+  INTEGRATION_PRODUCTS: `${BASE}/integration/products`,
+  INTEGRATION_VENDORS: `${BASE}/integration/vendors`,
+  INTEGRATION_VENDORS_BY_IDS: `${BASE}/integration/vendors/by-ids`,
+  INTEGRATION_LOCATION_STATES: `${BASE}/integration/locations/states`,
+  INTEGRATION_LOCATION_CITIES: `${BASE}/integration/locations/cities`,
 
   // Master Data — full CRUD + paginated search
-  MASTER_COMPANIES: `${BASE}/master/companies`,
-  MASTER_COMPANIES_SEARCH: `${BASE}/master/companies/search`,
-  MASTER_COMPANY_BY_ID: (id) => `${BASE}/master/companies/${id}`,
-  MASTER_COMPANY_TOGGLE: (id) => `${BASE}/master/companies/${id}/toggle-status`,
-
-  MASTER_VENDORS: `${BASE}/master/vendors`,
-  MASTER_VENDORS_SEARCH: `${BASE}/master/vendors/search`,
-  MASTER_VENDOR_BY_ID: (id) => `${BASE}/master/vendors/${id}`,
-  MASTER_VENDOR_TOGGLE: (id) => `${BASE}/master/vendors/${id}/toggle-status`,
-
-  MASTER_MANUFACTURERS: `${BASE}/master/manufacturers`,
-  MASTER_MANUFACTURERS_SEARCH: `${BASE}/master/manufacturers/search`,
-  MASTER_MANUFACTURER_BY_ID: (id) => `${BASE}/master/manufacturers/${id}`,
-  MASTER_MANUFACTURER_TOGGLE: (id) => `${BASE}/master/manufacturers/${id}/toggle-status`,
-
-  MASTER_DIVISIONS: `${BASE}/master/divisions`,
-  MASTER_DIVISIONS_SEARCH: `${BASE}/master/divisions/search`,
-  MASTER_DIVISION_BY_ID: (id) => `${BASE}/master/divisions/${id}`,
-  MASTER_DIVISION_TOGGLE: (id) => `${BASE}/master/divisions/${id}/toggle-status`,
-
-  MASTER_PRODUCTS: `${BASE}/master/products`,
-  MASTER_PRODUCTS_SEARCH: `${BASE}/master/products/search`,
-  MASTER_PRODUCT_BY_ID: (id) => `${BASE}/master/products/${id}`,
-  MASTER_PRODUCT_TOGGLE: (id) => `${BASE}/master/products/${id}/toggle-status`,
+  MASTER_AGREEMENT_GROUPS: `${BASE}/master/agreement-groups`,
+  MASTER_AGREEMENT_GROUPS_SEARCH: `${BASE}/master/agreement-groups/search`,
+  MASTER_AGREEMENT_GROUP_BY_ID: (id) => `${BASE}/master/agreement-groups/${id}`,
+  MASTER_AGREEMENT_GROUP_TOGGLE: (id) => `${BASE}/master/agreement-groups/${id}/toggle-status`,
 
   MASTER_INCOME_TYPES: `${BASE}/master/income-types`,
   MASTER_INCOME_TYPES_SEARCH: `${BASE}/master/income-types/search`,
@@ -125,6 +107,11 @@ export const ENDPOINTS = {
   MASTER_STATES_SEARCH: `${BASE}/master/states/search`,
   MASTER_STATE_BY_ID: (id) => `${BASE}/master/states/${id}`,
   MASTER_STATE_TOGGLE: (id) => `${BASE}/master/states/${id}/toggle-status`,
+
+  MASTER_PRICE_OFF_LOCATIONS: `${BASE}/master/price-off-locations`,
+  MASTER_PRICE_OFF_LOCATIONS_SEARCH: `${BASE}/master/price-off-locations/search`,
+  MASTER_PRICE_OFF_LOCATION_BY_ID: (id) => `${BASE}/master/price-off-locations/${id}`,
+  MASTER_PRICE_OFF_LOCATION_TOGGLE: (id) => `${BASE}/master/price-off-locations/${id}/toggle-status`,
 
   MASTER_AGREEMENT_TYPES: `${BASE}/master/agreement-types`,
   MASTER_AGREEMENT_TYPES_SEARCH: `${BASE}/master/agreement-types/search`,
@@ -142,9 +129,13 @@ export const ENDPOINTS = {
   MASTER_RIGHT_TOGGLE: (id) => `${BASE}/master/rights/${id}/toggle-status`,
 
   PRICE_OFFS: `${BASE}/price-offs`,
+  PRICE_OFFS_LOCATIONS: `${BASE}/price-offs/locations`,
   PRICE_OFFS_FILTER_OPTIONS: `${BASE}/price-offs/filter-options`,
   PRICE_OFFS_TEMPLATE: `${BASE}/price-offs/template`,
   PRICE_OFFS_UPLOAD: `${BASE}/price-offs/upload`,
+  PRICE_OFFS_PREVIEW: `${BASE}/price-offs/preview`,
+  PRICE_OFFS_COMMIT: `${BASE}/price-offs/commit`,
+  INTEGRATION_PRODUCTS_BULK_VALIDATE: `${BASE}/integration/products/bulk-validate`,
   PRICE_OFF_BY_ID: (id) => `${BASE}/price-offs/${id}`,
   PRICE_OFF_CAMPAIGN_ID: (id) => `${BASE}/price-offs/${id}/campaign-id`,
   PRICE_OFFS_BULK_CAMPAIGN_ID: `${BASE}/price-offs/bulk-campaign-id`,

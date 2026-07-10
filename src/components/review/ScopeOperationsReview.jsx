@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Box, CircularProgress, Typography } from '@mui/material';
-import axiosInstance from '../../api/axiosInstance';
-import { ENDPOINTS } from '../../config/endpoints';
+import { useMemo } from 'react';
+import { Box, Typography } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
 import TruncatedInlineList from './TruncatedInlineList';
+import { READ_ONLY_PRODUCT_COLUMNS } from '../../utils/productScopeUtils';
 
 function ScopeReviewField({ label, children }) {
   return (
@@ -17,14 +17,21 @@ function ScopeReviewField({ label, children }) {
 
 function formatVendorLabel(vendor) {
   if (!vendor) return '';
-  return vendor.vendorCode
-    ? `${vendor.vendorCode} — ${vendor.vendorName}`
-    : vendor.vendorName;
+  if (vendor.vendorId != null) {
+    return `${vendor.vendorName} (ID: ${vendor.vendorId})`;
+  }
+  return vendor.vendorName || '';
 }
 
-function formatDivisionRuleLabel(divisionName, ruleType) {
+function formatDivisionRuleLabel(divisionName, ruleType, divisionId) {
   const mode = ruleType === 'EXCLUDE' ? 'Excluded' : 'Included';
-  return `${divisionName} (${mode})`;
+  const idSuffix = divisionId != null ? ` · ID: ${divisionId}` : '';
+  return `${divisionName} (${mode})${idSuffix}`;
+}
+
+function formatManufacturerLabel(manufacturer) {
+  const name = manufacturer.manufacturerName || manufacturer.name || `Manufacturer #${manufacturer.id}`;
+  return manufacturer.id != null ? `${name} (ID: ${manufacturer.id})` : name;
 }
 
 export default function ScopeOperationsReview({
@@ -33,151 +40,83 @@ export default function ScopeOperationsReview({
   version = null,
   adhocSubType = null,
 }) {
-  const [loading, setLoading] = useState(false);
-  const [vendors, setVendors] = useState([]);
-  const [manufacturers, setManufacturers] = useState([]);
-  const [divisionNameById, setDivisionNameById] = useState({});
+  const manufacturers = useMemo(() => {
+    if (productRules.manufacturerOptions?.length) {
+      return productRules.manufacturerOptions.map((manufacturer) => ({
+        id: manufacturer.id,
+        manufacturerName: manufacturer.manufacturerName || manufacturer.name,
+      }));
+    }
+    if (version?.manufacturers?.length) {
+      return version.manufacturers.map((manufacturer) => ({
+        id: manufacturer.id,
+        manufacturerName: manufacturer.name,
+      }));
+    }
+    return [];
+  }, [productRules.manufacturerOptions, version?.manufacturers]);
 
-  const manufacturerIds = productRules.manufacturers ?? version?.manufacturerIds ?? [];
   const divisionRules = productRules.divisionRules?.length
     ? productRules.divisionRules
     : version?.divisionRules ?? [];
-  const manufacturerIdsKey = manufacturerIds.join(',');
-  const divisionRulesKey = divisionRules.map((rule) => `${rule.id}:${rule.ruleType}`).join(',');
-  const vendorIdsKey = vendorIds.join(',');
 
-  const computedProducts = useMemo(() => {
+  const computedProductRows = useMemo(() => {
     if (version?.products?.length) {
-      return version.products.map((product) => {
-        const parts = [product.productName];
-        if (product.manufacturerName) parts.push(product.manufacturerName);
-        if (product.divisionName) parts.push(product.divisionName);
-        return parts.filter(Boolean).join(' · ');
-      });
+      return version.products.map((product) => ({
+        productId: product.productId,
+        productName: product.productName,
+        divisionName: product.divisionName || '—',
+      }));
+    }
+    if (productRules.computedProductPreview?.length) {
+      return productRules.computedProductPreview.map((product) => ({
+        productId: product.productId,
+        productName: product.productName,
+        divisionName: product.divisionName || '—',
+      }));
     }
     return [];
-  }, [version?.products]);
+  }, [version?.products, productRules.computedProductPreview]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const vendorLabels = (version?.vendors || [])
+    .filter((vendor) => vendorIds.includes(vendor.vendorId))
+    .map(formatVendorLabel);
 
-    const loadScopeDetails = async () => {
-      setLoading(true);
-      try {
-        const requests = [];
-
-        if (vendorIds.length) {
-          requests.push(
-            axiosInstance.get(ENDPOINTS.VENDORS, { params: { ids: vendorIds.join(',') } }),
-          );
-        } else {
-          requests.push(Promise.resolve({ data: [] }));
-        }
-
-        requests.push(axiosInstance.get(ENDPOINTS.MANUFACTURERS));
-
-        const [vendorResponse, manufacturerResponse] = await Promise.all(requests);
-        if (cancelled) return;
-
-        const vendorList = (Array.isArray(vendorResponse.data) ? vendorResponse.data : [])
-          .filter((vendor) => vendorIds.includes(vendor.id));
-        setVendors(vendorList);
-
-        const manufacturerCatalog = Array.isArray(manufacturerResponse.data)
-          ? manufacturerResponse.data
-          : [];
-        const selectedManufacturers = manufacturerCatalog.filter((manufacturer) =>
-          manufacturerIds.includes(manufacturer.id),
-        );
-        setManufacturers(selectedManufacturers);
-
-        const divisionIds = divisionRules.map((rule) => rule.id);
-        if (!divisionIds.length || !selectedManufacturers.length) {
-          setDivisionNameById({});
-          return;
-        }
-
-        const divisionResponses = await Promise.all(
-          selectedManufacturers.map((manufacturer) =>
-            axiosInstance.get(ENDPOINTS.DIVISIONS(manufacturer.id)),
-          ),
-        );
-        if (cancelled) return;
-
-        const nextDivisionMap = {};
-        divisionResponses.forEach((response) => {
-          (Array.isArray(response.data) ? response.data : []).forEach((division) => {
-            nextDivisionMap[division.id] = division.divisionName;
-          });
-        });
-        setDivisionNameById(nextDivisionMap);
-      } catch (err) {
-        console.error('Failed to load scope review details:', err);
-        if (!cancelled) {
-          setVendors([]);
-          setManufacturers([]);
-          setDivisionNameById({});
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    loadScopeDetails();
-    return () => { cancelled = true; };
-  }, [vendorIdsKey, manufacturerIdsKey, divisionRulesKey]);
-
-  const vendorLabels = vendors.map(formatVendorLabel).filter(Boolean);
-  const manufacturerLabels = manufacturers.map((manufacturer) => manufacturer.manufacturerName).filter(Boolean);
-  const divisionLabels = divisionRules.map((rule) => {
-    const divisionName = divisionNameById[rule.id] || `Division #${rule.id}`;
-    return formatDivisionRuleLabel(divisionName, rule.ruleType);
-  });
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
-        <CircularProgress size={16} />
-        <Typography variant="body2" color="text.secondary">Loading scope details…</Typography>
-      </Box>
-    );
-  }
+  const manufacturerLabels = manufacturers.map(formatManufacturerLabel).filter(Boolean);
+  const divisionLabels = divisionRules.map((rule) =>
+    formatDivisionRuleLabel(rule.name || `Division #${rule.id}`, rule.ruleType, rule.id),
+  );
 
   return (
     <Box>
-      <ScopeReviewField label="Supply Vendors">
-        <TruncatedInlineList items={vendorLabels} maxVisible={3} emptyLabel="No supply vendors selected" />
+      <ScopeReviewField label="Vendors">
+        <TruncatedInlineList items={vendorLabels} emptyLabel="No vendors selected" />
       </ScopeReviewField>
-
       <ScopeReviewField label="Manufacturers">
-        <TruncatedInlineList
-          items={manufacturerLabels}
-          maxVisible={4}
-          emptyLabel="All manufacturers in scope"
-        />
+        <TruncatedInlineList items={manufacturerLabels} emptyLabel="No manufacturers selected" />
       </ScopeReviewField>
-
-      <ScopeReviewField label="Divisions">
-        <TruncatedInlineList
-          items={divisionLabels}
-          maxVisible={4}
-          emptyLabel="No division rules configured"
-        />
+      <ScopeReviewField label="Division Rules">
+        <TruncatedInlineList items={divisionLabels} emptyLabel="No division rules" />
       </ScopeReviewField>
-
       <ScopeReviewField label="Computed Products">
-        <TruncatedInlineList
-          items={computedProducts}
-          maxVisible={6}
-          emptyLabel="No computed products yet — save agreement to refresh"
-        />
+        {computedProductRows.length === 0 ? (
+          <Typography variant="body2" fontWeight={500}>No computed products yet</Typography>
+        ) : (
+          <Box sx={{ height: 360, width: '100%', mt: 0.5 }}>
+            <DataGrid
+              rows={computedProductRows}
+              columns={READ_ONLY_PRODUCT_COLUMNS}
+              getRowId={(row) => row.productId}
+              pageSizeOptions={[10, 25, 50]}
+              initialState={{
+                pagination: { paginationModel: { pageSize: 10 } },
+              }}
+              disableRowSelectionOnClick
+              density="compact"
+            />
+          </Box>
+        )}
       </ScopeReviewField>
-
-      {adhocSubType && (
-        <ScopeReviewField label="Activity Type">
-          <Typography variant="body2" fontWeight={500}>{adhocSubType.replace('_', ' ')}</Typography>
-        </ScopeReviewField>
-      )}
     </Box>
   );
 }

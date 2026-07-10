@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk, createSelector } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -95,10 +95,7 @@ export const { logout, clearError, setUserRights } = authSlice.actions;
 const EMPTY_RIGHTS = [];
 
 export const selectCurrentUser = (state) => state.auth.user;
-export const selectUserRights = createSelector(
-  [(state) => state.auth.user?.rights],
-  (rights) => rights ?? EMPTY_RIGHTS,
-);
+export const selectUserRights = (state) => state.auth.user?.rights ?? EMPTY_RIGHTS;
 export const selectIsAuthenticated = (state) => !!state.auth.token;
 export const selectAuthLoading = (state) => state.auth.loading;
 export const selectAuthError = (state) => state.auth.error;

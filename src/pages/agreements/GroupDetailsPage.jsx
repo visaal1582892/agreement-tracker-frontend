@@ -33,7 +33,7 @@ export default function GroupDetailsPage() {
 
   const [group, setGroup] = useState(null);
   const [groupLoading, setGroupLoading] = useState(true);
-  const [filters, setFilters] = useState({ companyAgreementGroupId: Number(groupId) });
+  const [filters, setFilters] = useState({ agreementGroupId: Number(groupId) });
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
@@ -50,7 +50,7 @@ export default function GroupDetailsPage() {
   const loadGroup = useCallback(async () => {
     setGroupLoading(true);
     try {
-      const { data } = await axiosInstance.get(ENDPOINTS.COMPANY_AGREEMENT_GROUP_BY_ID(groupId));
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_GROUP_BY_ID(groupId));
       setGroup(data);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to load group', { variant: 'error' });
@@ -74,10 +74,9 @@ export default function GroupDetailsPage() {
       scope: agreementScope,
       sortBy,
       sortDir,
-      companyAgreementGroupId: Number(groupId),
+      agreementGroupId: Number(groupId),
       ...(parsed.agreementName && { agreementName: parsed.agreementName }),
       ...(parsed.agreementGroupName && { agreementGroupName: parsed.agreementGroupName }),
-      ...(parsed.companyId && { companyId: parsed.companyId }),
       ...(parsed.status && { status: parsed.status }),
       ...(parsed.ownerName && { ownerName: parsed.ownerName }),
       ...(parsed.vendorId && { vendorId: parsed.vendorId }),
@@ -100,7 +99,7 @@ export default function GroupDetailsPage() {
 
   const handleFilterChange = useCallback((key, value) => {
     setFilters((prev) => {
-      const next = { ...prev, companyAgreementGroupId: Number(groupId) };
+      const next = { ...prev, agreementGroupId: Number(groupId) };
       if (value) next[key] = value;
       else delete next[key];
       return next;
@@ -129,7 +128,7 @@ export default function GroupDetailsPage() {
     setRenaming(true);
     try {
       const { data } = await axiosInstance.put(
-        ENDPOINTS.COMPANY_AGREEMENT_GROUP_BY_ID(groupId),
+        ENDPOINTS.AGREEMENT_GROUP_BY_ID(groupId),
         { name: renameValue.trim() },
       );
       setGroup(data);
@@ -237,14 +236,6 @@ export default function GroupDetailsPage() {
           spacing={6}
           divider={<Divider orientation="vertical" flexItem />}
         >
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-              Company
-            </Typography>
-            <Typography variant="body1" fontWeight="medium">
-              {group?.companyName || '—'}
-            </Typography>
-          </Box>
           <Box>
             <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
               Created By

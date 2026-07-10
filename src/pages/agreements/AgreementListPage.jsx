@@ -9,7 +9,7 @@ import { ROUTES } from '../../config/routes';
 import { BRAND } from '../../config/theme';
 import PageHeader from '../../components/ui/PageHeader';
 import AgreementsTable from '../../components/agreements/AgreementsTable';
-import CompanyGroupsTable from '../../components/agreements/CompanyGroupsTable';
+import GroupsTable from '../../components/agreements/GroupsTable';
 import { useDataTable } from '../../hooks/useDataTable';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useAuth } from '../../hooks/useAuth';
@@ -27,8 +27,7 @@ function buildAgreementQueryParams({ page, rowsPerPage, sortBy, sortDir, scope, 
   const params = { page, size: rowsPerPage, scope };
   if (sortBy) params.sort = `${sortBy},${sortDir || 'asc'}`;
   if (filters.agreementName) params.agreementName = filters.agreementName;
-  if (filters.companyId) params.companyId = filters.companyId;
-  if (filters.companyAgreementGroupId) params.companyAgreementGroupId = filters.companyAgreementGroupId;
+  if (filters.agreementGroupId) params.agreementGroupId = filters.agreementGroupId;
   if (filters.agreementGroupName) params.agreementGroupName = filters.agreementGroupName;
   if (filters.status) params.status = filters.status;
   if (filters.ownerName) params.ownerName = filters.ownerName;
@@ -44,7 +43,6 @@ function buildAgreementQueryParams({ page, rowsPerPage, sortBy, sortDir, scope, 
 function buildGroupQueryParams({ page, rowsPerPage, sortBy, sortDir, filters }) {
   const params = { page, size: rowsPerPage };
   if (sortBy) params.sort = `${sortBy},${sortDir || 'desc'}`;
-  if (filters.companyId) params.companyId = filters.companyId;
   if (filters.groupName) params.groupName = filters.groupName;
   if (filters.lastModifiedBy) params.lastModifiedBy = filters.lastModifiedBy;
   if (filters.createdBy) params.createdBy = filters.createdBy;
@@ -119,7 +117,7 @@ export default function AgreementListPage() {
     setGroupsLoading(true);
     try {
       const filters = JSON.parse(groupFilterKey);
-      const { data } = await axiosInstance.get(ENDPOINTS.COMPANY_AGREEMENT_GROUPS_ALL, {
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_GROUPS, {
         params: buildGroupQueryParams({
           page: groupTable.page,
           rowsPerPage: groupTable.rowsPerPage,
@@ -225,17 +223,17 @@ export default function AgreementListPage() {
           '& .MuiTabs-indicator': { bgcolor: BRAND.red },
         }}
       >
-        <Tab label="Company Groups" value={PAGE_TAB.GROUPS} />
+        <Tab label="Agreement Groups" value={PAGE_TAB.GROUPS} />
         <Tab label="All Agreements" value={PAGE_TAB.AGREEMENTS} />
       </Tabs>
 
       {pageTab === PAGE_TAB.GROUPS ? (
         <>
           <PageHeader
-            title="Company Agreement Groups"
-            subtitle="Manage company agreement groups"
+            title="Agreement Groups"
+            subtitle="Manage agreement groups"
           />
-          <CompanyGroupsTable
+          <GroupsTable
             rows={groups}
             loading={groupsLoading}
             totalCount={groupsTotal}

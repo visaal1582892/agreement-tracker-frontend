@@ -408,7 +408,7 @@ export default function AgreementDetailPage({
         <Box>
           <Typography variant="h5" fontWeight={700}>{displayName}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {[group?.companyAgreementGroupName, group?.companyName].filter(Boolean).join(' · ')}
+            {group?.agreementGroupName || group?.name}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -510,11 +510,10 @@ export default function AgreementDetailPage({
             <>
               <Accordion defaultExpanded elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography fontWeight={600}>Company & Vendors</Typography>
+                  <Typography fontWeight={600}>Vendors</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={1}>
-                    <Grid size={4}><Typography variant="caption" color="text.secondary">Company</Typography><Typography variant="body2">{agreement.companyName || '—'}</Typography></Grid>
                     <Grid size={4}><Typography variant="caption" color="text.secondary">Owner</Typography><Typography variant="body2">{agreement.ownerName}</Typography></Grid>
                     <Grid size={12}><Divider sx={{ my: 1 }} />
                       {agreement.vendors?.map((v) => <Chip key={v.vendorId} label={v.vendorName} size="small" sx={{ mr: 0.5, mb: 0.5 }} />)}
@@ -531,8 +530,8 @@ export default function AgreementDetailPage({
                     <Typography variant="body2" fontWeight={600}>{agreement.agreementName || '—'}</Typography>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="caption" color="text.secondary">Company Agreement Group</Typography>
-                    <Typography variant="body2">{agreement.companyAgreementGroupName || group?.companyAgreementGroupName || '—'}</Typography>
+                    <Typography variant="caption" color="text.secondary">Agreement Group</Typography>
+                    <Typography variant="body2">{agreement.agreementGroupName || group?.agreementGroupName || group?.name || '—'}</Typography>
                   </Grid>
                   <Grid size={{ xs: 6, sm: 3 }}>
                     <Typography variant="caption" color="text.secondary">Income Type</Typography>

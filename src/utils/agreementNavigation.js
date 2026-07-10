@@ -46,8 +46,8 @@ export function buildDraftEditPath(row, { step, mode = 'group' } = {}) {
     return buildAgreementEditPath(row.latestVersionId, { step });
   }
 
-  if (!row.companyAgreementGroupId) return null;
-  return buildGroupWizardPath(row.companyAgreementGroupId, row.id, { step });
+  if (!row.agreementGroupId) return null;
+  return buildGroupWizardPath(row.agreementGroupId, row.id, { step });
 }
 
 /**

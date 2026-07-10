@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Autocomplete, Box, Typography, Grid, TextField, Button, Chip, FormControl, Select, MenuItem,
+  Box, Typography, Grid, TextField, Button, Chip, FormControl, Select, MenuItem,
   FormHelperText, IconButton, alpha, Alert,
 } from '@mui/material';
 import { UploadFile, Delete } from '@mui/icons-material';
@@ -14,6 +14,7 @@ import Step2Products from './Step2Products';
 import Step2SupplyVendors from './Step2SupplyVendors';
 import AssetRentalScopeFields from './AssetRentalScopeFields';
 import AssetRentalGeographyFields from './AssetRentalGeographyFields';
+import PartnerLocationFields from './PartnerLocationFields';
 import AdHocActivityFields from './AdHocActivityFields';
 import SettlementRoutingFields from './SettlementRoutingFields';
 import {
@@ -26,7 +27,7 @@ import {
 const DOCUMENT_TYPES = ['AGREEMENT', 'SUPPORTING_DOC', 'EMAIL', 'OTHER'];
 
 const SCOPE_ERROR_FIELDS = ['supplyVendors', 'products', 'assetCategory', 'assetType'];
-const GEO_ERROR_FIELDS = ['states', 'storeCount', 'quantityCap'];
+const GEO_ERROR_FIELDS = ['geographyMode', 'partnerState', 'partnerCity', 'storeCount', 'quantityCap'];
 const SETTLEMENT_ERROR_FIELDS = ['paymentRealization', 'calculationBasis', 'invoiceVendor'];
 
 function sectionHasError(fieldErrors, fields) {
@@ -45,12 +46,12 @@ export default function ConfigurationStep({
   onClearFieldError,
 }) {
   const [incomeTypes, setIncomeTypes] = useState([]);
-  const [stateOptions, setStateOptions] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const details = agreement?.details ?? {};
   const asset = agreement?.asset ?? {};
   const vendorIds = state?.vendorIds ?? [];
+  const vendors = state?.vendors ?? [];
   const productRules = state?.productRules ?? {
     manufacturers: [],
     divisionRules: [],
@@ -59,7 +60,6 @@ export default function ConfigurationStep({
 
   useEffect(() => {
     axiosInstance.get(ENDPOINTS.INCOME_TYPES).then(({ data }) => setIncomeTypes(data));
-    axiosInstance.get(ENDPOINTS.STATES).then(({ data }) => setStateOptions(Array.isArray(data) ? data : []));
   }, []);
 
   const isAssetRental = isAssetRentalIncomeType(
@@ -82,16 +82,9 @@ export default function ConfigurationStep({
     details.incomeTypeId,
     details.incomeTypeName,
   );
-  const selectedStateIds = details.stateIds ?? [];
-  const selectedStates = stateOptions.filter((stateOption) => selectedStateIds.includes(stateOption.id));
   const documents = details.documents ?? [];
   const hasIncomeType = Boolean(details.incomeTypeId);
   const showGeographySection = isAssetRental || isCommercialContracts || isDataFee;
-
-  useEffect(() => {
-    if (!isDataFee || !stateOptions.length || selectedStateIds.length > 0) return;
-    onUpdateDetails({ stateIds: stateOptions.map((option) => option.id) });
-  }, [isDataFee, stateOptions, selectedStateIds.length, onUpdateDetails]);
 
   const addDocument = (file) => {
     if (!file) return;
@@ -150,7 +143,17 @@ export default function ConfigurationStep({
             {!isAssetRental && (
               <Step2SupplyVendors
                 vendorIds={vendorIds}
-                onVendorChange={(ids) => updateFields({ vendorIds: ids ?? [] })}
+                selectedVendors={vendors.map((vendor) => ({
+                  id: vendor.vendorId,
+                  vendorName: vendor.vendorName,
+                }))}
+                onVendorChange={(selected) => updateFields({
+                  vendorIds: selected.map((vendor) => vendor.id),
+                  vendors: selected.map((vendor) => ({
+                    vendorId: vendor.id,
+                    vendorName: vendor.vendorName,
+                  })),
+                })}
                 error={mergedFieldErrors.supplyVendors}
               />
             )}
@@ -197,52 +200,24 @@ export default function ConfigurationStep({
               forceExpand={geographyHasError}
               hasError={geographyHasError}
             >
+              {(isCommercialContracts || isDataFee) && (
+                <PartnerLocationFields
+                  details={details}
+                  onUpdateDetails={onUpdateDetails}
+                  fieldErrors={mergedFieldErrors}
+                  onClearFieldError={onClearFieldError}
+                />
+              )}
+
               {isAssetRental && (
                 <AssetRentalGeographyFields
                   asset={asset}
-                  stateOptions={stateOptions}
-                  selectedStateIds={selectedStateIds}
+                  details={details}
                   onUpdateAsset={onUpdateAsset}
                   onUpdateDetails={onUpdateDetails}
                   fieldErrors={mergedFieldErrors}
+                  onClearFieldError={onClearFieldError}
                 />
-              )}
-
-              {isCommercialContracts && (
-                <WizardFieldAnchor field="states" error={mergedFieldErrors.states}>
-                  <Autocomplete
-                  multiple
-                  options={stateOptions}
-                  value={selectedStates}
-                  getOptionLabel={(option) => option.stateName}
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((s) => s.id) })}
-                  renderInput={(params) => (
-                    <TextField {...params} label="Region / States *" size="small" placeholder="Select states" />
-                  )}
-                />
-                </WizardFieldAnchor>
-              )}
-
-              {isDataFee && (
-                <WizardFieldAnchor field="states" error={mergedFieldErrors.states}>
-                  <Autocomplete
-                  multiple
-                  options={stateOptions}
-                  value={selectedStates}
-                  getOptionLabel={(option) => option.stateName}
-                  isOptionEqualToValue={(option, value) => option.id === value.id}
-                  onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((s) => s.id) })}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Region / States *"
-                      size="small"
-                      placeholder="All states selected by default — narrow scope if needed"
-                    />
-                  )}
-                />
-                </WizardFieldAnchor>
               )}
 
             </CollapsibleSection>

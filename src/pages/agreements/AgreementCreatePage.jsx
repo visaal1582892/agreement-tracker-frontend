@@ -50,7 +50,7 @@ export default function AgreementCreatePage() {
       );
       enqueueSnackbar('Foundational setup saved', { variant: 'success' });
       navigate(
-        buildGroupWizardPath(created.companyAgreementGroupId, created.agreementId, {
+        buildGroupWizardPath(created.agreementGroupId, created.agreementId, {
           step: urlStepFromInternal(1),
         }),
         { replace: true },

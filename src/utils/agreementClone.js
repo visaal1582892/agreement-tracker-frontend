@@ -1,19 +1,17 @@
 /**
  * Build wizard pre-fill payload from agreement API response.
- * Keeps company, vendors, productRules only — no ids/dates/commercials/status/notes/docs.
+ * Keeps agreement group, vendors, productRules only — no ids/dates/commercials/status/notes/docs.
  */
 export function buildClonedWizardData(agreement) {
   if (!agreement) return null;
 
   return {
     agreementName: '',
-    companyId: agreement.companyId,
-    companyName: agreement.companyName,
-    companyAgreementGroupId: agreement.companyAgreementGroupId,
-    companyAgreementGroupName: agreement.companyAgreementGroupName,
+    agreementGroupId: agreement.agreementGroupId,
+    agreementGroupName: agreement.agreementGroupName,
     vendorIds: (agreement.vendors || []).map((v) => v.vendorId),
     productRules: {
-      manufacturers: agreement.manufacturerIds || [],
+      manufacturers: agreement.manufacturers?.map((m) => m.id) || agreement.manufacturerIds || [],
       divisionRules: (agreement.divisionRules || []).map((r) => ({
         id: r.id,
         ruleType: r.ruleType,

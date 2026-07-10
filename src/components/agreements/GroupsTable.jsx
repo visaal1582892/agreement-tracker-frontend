@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chip, IconButton, Menu, MenuItem } from '@mui/material';
 import { MoreVert } from '@mui/icons-material';
 import DataTable from '../ui/DataTable';
-import axiosInstance from '../../api/axiosInstance';
-import { ENDPOINTS } from '../../config/endpoints';
 import { navigateToGroup } from '../../utils/agreementNavigation';
 
 const STATUS_OPTIONS = [
@@ -69,7 +67,7 @@ function RowActionsMenu({ row, canDelete, onDelete, navigate }) {
   );
 }
 
-export default function CompanyGroupsTable({
+export default function GroupsTable({
   rows,
   loading,
   totalCount,
@@ -83,44 +81,11 @@ export default function CompanyGroupsTable({
   filters,
   onFilterChange,
   onDelete,
-  emptyMessage = 'No company agreement groups found.',
+  emptyMessage = 'No agreement groups found.',
 }) {
   const navigate = useNavigate();
-  const [companyOptions, setCompanyOptions] = useState([]);
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
-
-  const searchCompanies = useCallback(async (query) => {
-    setLoadingCompanies(true);
-    try {
-      const { data } = await axiosInstance.get(ENDPOINTS.COMPANIES, {
-        params: query?.trim() ? { search: query.trim() } : {},
-      });
-      setCompanyOptions(Array.isArray(data) ? data : []);
-    } catch {
-      setCompanyOptions([]);
-    } finally {
-      setLoadingCompanies(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    searchCompanies('');
-  }, [searchCompanies]);
 
   const columns = useMemo(() => [
-    {
-      field: 'companyName',
-      header: 'Company Name',
-      minWidth: 180,
-      sortable: false,
-      filterType: 'searchable-select',
-      filterKey: 'companyId',
-      filterOptions: companyOptions,
-      onFilterSearch: searchCompanies,
-      filterLoading: loadingCompanies,
-      getOptionLabel: (o) => o?.companyName || '',
-      render: (v) => v || '—',
-    },
     {
       field: 'name',
       header: 'Group Name',
@@ -188,7 +153,7 @@ export default function CompanyGroupsTable({
         />
       ),
     },
-  ], [companyOptions, searchCompanies, loadingCompanies, onDelete, navigate]);
+  ], [onDelete, navigate]);
 
   return (
     <DataTable

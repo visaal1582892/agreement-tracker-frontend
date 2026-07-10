@@ -8,6 +8,7 @@ import DataTable from '../ui/DataTable';
 import StatusBadge from '../ui/StatusBadge';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
+import { integrationApi } from '../../api/integrationApi';
 import { submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { cloneAgreementOnServer } from '../../utils/agreementClone';
@@ -195,15 +196,11 @@ function RowActionsMenu({
 const buildColumns = ({
   vendorOptions,
   incomeTypeOptions,
-  companyOptions,
   onVendorSearch,
   onIncomeTypeSearch,
-  onCompanySearch,
   loadingVendors,
   loadingIncomeTypes,
-  loadingCompanies,
   hideGroupColumn,
-  hideCompanyFilter,
 }) => [
   {
     field: 'agreementName',
@@ -215,28 +212,13 @@ const buildColumns = ({
     render: (v) => v || '—',
   },
   {
-    field: 'companyAgreementGroupName',
+    field: 'agreementGroupName',
     header: 'Agreement Group',
     minWidth: 180,
     sortable: false,
     ...(hideGroupColumn ? { filterType: null } : {
       filterType: 'text',
       filterKey: 'agreementGroupName',
-    }),
-    render: (v) => v || '—',
-  },
-  {
-    field: 'companyName',
-    header: 'Company',
-    minWidth: 160,
-    sortable: false,
-    ...(hideCompanyFilter ? {} : {
-      filterType: 'searchable-select',
-      filterKey: 'companyId',
-      filterOptions: companyOptions,
-      onFilterSearch: onCompanySearch,
-      filterLoading: loadingCompanies,
-      getOptionLabel: (o) => o?.companyName || '',
     }),
     render: (v) => v || '—',
   },
@@ -378,18 +360,14 @@ export default function AgreementsTable({
 
   const [vendorOptions, setVendorOptions] = useState([]);
   const [incomeTypeOptions, setIncomeTypeOptions] = useState([]);
-  const [companyOptions, setCompanyOptions] = useState([]);
   const [loadingVendors, setLoadingVendors] = useState(false);
   const [loadingIncomeTypes, setLoadingIncomeTypes] = useState(false);
-  const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [transferRow, setTransferRow] = useState(null);
 
   const searchVendors = useCallback(async (query) => {
     setLoadingVendors(true);
     try {
-      const { data } = await axiosInstance.get(ENDPOINTS.VENDORS, {
-        params: query?.trim() ? { search: query.trim() } : {},
-      });
+      const { data } = await integrationApi.searchVendors(query?.trim() || '');
       setVendorOptions(Array.isArray(data) ? data : []);
     } catch {
       setVendorOptions([]);
@@ -412,25 +390,10 @@ export default function AgreementsTable({
     }
   }, []);
 
-  const searchCompanies = useCallback(async (query) => {
-    setLoadingCompanies(true);
-    try {
-      const { data } = await axiosInstance.get(ENDPOINTS.COMPANIES, {
-        params: query?.trim() ? { search: query.trim() } : {},
-      });
-      setCompanyOptions(Array.isArray(data) ? data : []);
-    } catch {
-      setCompanyOptions([]);
-    } finally {
-      setLoadingCompanies(false);
-    }
-  }, []);
-
   useEffect(() => {
     searchVendors('');
     searchIncomeTypes('');
-    searchCompanies('');
-  }, [searchVendors, searchIncomeTypes, searchCompanies]);
+  }, [searchVendors, searchIncomeTypes]);
 
   const handleSubmit = useCallback(async (agreementId, comments) => {
     try {
@@ -466,26 +429,19 @@ export default function AgreementsTable({
     () => buildColumns({
       vendorOptions,
       incomeTypeOptions,
-      companyOptions,
       onVendorSearch: searchVendors,
       onIncomeTypeSearch: searchIncomeTypes,
-      onCompanySearch: searchCompanies,
       loadingVendors,
       loadingIncomeTypes,
-      loadingCompanies,
       hideGroupColumn: Boolean(lockedGroupId),
-      hideCompanyFilter: false,
     }),
     [
       vendorOptions,
       incomeTypeOptions,
-      companyOptions,
       searchVendors,
       searchIncomeTypes,
-      searchCompanies,
       loadingVendors,
       loadingIncomeTypes,
-      loadingCompanies,
       lockedGroupId,
     ],
   );

@@ -26,6 +26,7 @@ export default function SearchableSelect({
   onChange,
   onSearch,
   getOptionLabel = (o) => o?.label || o?.name || o?.companyName || o?.vendorName || String(o ?? ''),
+  renderOption,
   isOptionEqualToValue = (o, v) => o?.id === v?.id,
   label,
   placeholder = 'Search…',
@@ -36,6 +37,7 @@ export default function SearchableSelect({
   helperText,
   maxVisibleChips = DEFAULT_MAX_VISIBLE_CHIPS,
   noOptionsText = 'No results found',
+  emptyQueryText = 'Type to search…',
 }) {
   const multi = multiple ?? isMulti;
   const listboxId = useId();
@@ -336,7 +338,7 @@ export default function SearchableSelect({
         >
           {displayedOptions.length === 0 && !loading ? (
             <Typography variant="body2" sx={{ px: 2, py: 1.5, color: BRAND.textSecondary }}>
-              {noOptionsText}
+              {searchQuery.trim() ? noOptionsText : emptyQueryText}
             </Typography>
           ) : (
             displayedOptions.map((option, index) => {
@@ -359,7 +361,7 @@ export default function SearchableSelect({
                     '&:hover': { bgcolor: alpha(BRAND.red, 0.06) },
                   }}
                 >
-                  {getOptionLabel(option)}
+                  {renderOption ? renderOption(option) : getOptionLabel(option)}
                 </Box>
               );
             })

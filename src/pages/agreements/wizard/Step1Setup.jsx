@@ -1,5 +1,5 @@
 import { Box, Typography } from '@mui/material';
-import Step1CompanyVendors from './Step1CompanyVendors';
+import Step1GroupSetup from './Step1GroupSetup';
 import Step1FoundationalFields from './Step1FoundationalFields';
 
 export default function Step1Setup({
@@ -14,10 +14,10 @@ export default function Step1Setup({
         Foundational Setup
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-        Partner, classification, and contract duration for this agreement.
+        Agreement group, classification, and contract duration for this agreement.
       </Typography>
 
-      <Step1CompanyVendors
+      <Step1GroupSetup
         state={state}
         updateFields={updateFields}
         groupFieldsLocked={groupFieldsLocked}

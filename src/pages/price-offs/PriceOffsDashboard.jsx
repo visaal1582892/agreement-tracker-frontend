@@ -11,6 +11,7 @@ import PageHeader from '../../components/ui/PageHeader';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { BRAND } from '../../config/theme';
 import PriceOffDetailDrawer from './PriceOffDetailDrawer';
+import PriceOffEditDialog from './PriceOffEditDialog';
 import {
   HeaderFilterStack,
   HeaderLabel,
@@ -41,13 +42,19 @@ import {
   fetchPriceOffCampaign,
   fetchPriceOffCampaigns,
   fetchPriceOffFilterOptions,
+  fetchPriceOffLocations,
+  formatCreditNote,
   formatFinalOffer,
   formatMoney,
   formatOfferValue,
   formatPercent,
+  resolveLocationAllocation,
   updatePriceOffCampaignId,
-  uploadPriceOffCampaigns,
+  updatePriceOffCampaign,
+  previewPriceOffCampaigns,
+  commitPriceOffCampaigns,
 } from '../../api/priceOffsApi';
+import PriceOffUploadPreviewDialog from './PriceOffUploadPreviewDialog';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All' },
@@ -57,6 +64,7 @@ const STATUS_OPTIONS = [
   { value: 'PENDING_ACTIVATION', label: 'Pending Campaign ID' },
   { value: 'LIVE', label: 'Live' },
   { value: 'COMPLETED', label: 'Completed' },
+  { value: 'EXPIRED', label: 'Expired' },
   { value: 'REJECTED', label: 'Rejected' },
 ];
 
@@ -83,11 +91,17 @@ export default function PriceOffsDashboard() {
   const [debouncedFilters, setDebouncedFilters] = useState(EMPTY_FILTERS);
   const [channelOptions, setChannelOptions] = useState([]);
   const [discountTypeOptions, setDiscountTypeOptions] = useState([]);
+  const [locationCodes, setLocationCodes] = useState([]);
+  const [allLocations, setAllLocations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploadErrors, setUploadErrors] = useState([]);
+  const [uploadSummary, setUploadSummary] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [committing, setCommitting] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState(null);
@@ -98,6 +112,8 @@ export default function PriceOffsDashboard() {
   const [bulkCampaignId, setBulkCampaignId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFilters(filters), 400);
@@ -118,6 +134,15 @@ export default function PriceOffsDashboard() {
       .catch(() => enqueueSnackbar('Failed to load filter options', { variant: 'error' }));
   }, [enqueueSnackbar]);
 
+  useEffect(() => {
+    fetchPriceOffLocations()
+      .then((locations) => {
+        setAllLocations(locations ?? []);
+        setLocationCodes((locations ?? []).map((location) => location.code));
+      })
+      .catch(() => enqueueSnackbar('Failed to load price off location columns', { variant: 'error' }));
+  }, [enqueueSnackbar]);
+
   const updateFilter = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -133,10 +158,21 @@ export default function PriceOffsDashboard() {
     [campaigns, selected],
   );
 
-  const allDraftSelected = selectedRows.length > 0
-    && selectedRows.every((row) => row.approvalStatus === 'DRAFT');
-  const allCampaignIdEligible = selectedRows.length > 0
-    && selectedRows.every((row) => ['APPROVED', 'PENDING_ACTIVATION'].includes(row.displayStatus));
+  const selectedDraftRows = useMemo(
+    () => selectedRows.filter((row) => row.approvalStatus === 'DRAFT'),
+    [selectedRows],
+  );
+
+  const selectedCampaignIdRows = useMemo(
+    () => selectedRows.filter((row) => ['APPROVED', 'PENDING_ACTIVATION'].includes(row.displayStatus)),
+    [selectedRows],
+  );
+
+  const allDraftSelected = selectedDraftRows.length > 0
+    && selectedDraftRows.length === selectedRows.length
+    && selectedDraftRows.every((row) => row.approvalStatus === 'DRAFT');
+  const allCampaignIdEligible = selectedCampaignIdRows.length > 0
+    && selectedCampaignIdRows.length === selectedRows.length;
 
   const loadCampaigns = useCallback(async () => {
     setLoading(true);
@@ -163,6 +199,17 @@ export default function PriceOffsDashboard() {
     loadCampaigns();
   }, [loadCampaigns]);
 
+  // Drop stale IDs (e.g. deleted rows) once all campaigns fit on current page
+  useEffect(() => {
+    if (totalElements > pageSize) return;
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const validIds = new Set(campaigns.map((row) => row.id));
+      const next = new Set([...prev].filter((id) => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [campaigns, totalElements, pageSize]);
+
   const handleSort = (field) => {
     setSortModel((prev) => {
       const current = prev[0];
@@ -176,15 +223,24 @@ export default function PriceOffsDashboard() {
 
   const toggleSelectAllVisible = () => {
     setSelected((prev) => {
-      const next = new Set(prev);
       if (allVisibleSelected) {
+        const next = new Set(prev);
         visibleIds.forEach((id) => next.delete(id));
-      } else {
-        visibleIds.forEach((id) => next.add(id));
+        return next;
       }
+      const next = new Set(prev);
+      visibleIds.forEach((id) => next.add(id));
       return next;
     });
   };
+
+  const removeFromSelection = useCallback((ids) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next.size === prev.size ? prev : next;
+    });
+  }, []);
 
   const handleDownloadTemplate = async () => {
     setDownloading(true);
@@ -202,19 +258,43 @@ export default function PriceOffsDashboard() {
     if (!file) return;
     setUploading(true);
     setUploadErrors([]);
+    setUploadSummary(null);
+    setPreviewData(null);
     try {
-      const result = await uploadPriceOffCampaigns(file);
-      setUploadErrors(result.errors ?? []);
-      enqueueSnackbar(
-        `${result.createdCount} campaign(s) uploaded${result.skippedCount ? `, ${result.skippedCount} row(s) skipped` : ''}`,
-        { variant: result.skippedCount ? 'warning' : 'success' },
-      );
-      await loadCampaigns();
+      const preview = await previewPriceOffCampaigns(file);
+      setPreviewData(preview);
+      setPreviewOpen(true);
+      if (!preview.canCommit) {
+        setUploadErrors(
+          (preview.rows ?? [])
+            .filter((row) => !row.valid)
+            .flatMap((row) => (row.errors ?? []).map((err) => `Row ${row.rowNumber}: ${err}`)),
+        );
+      }
     } catch (err) {
-      enqueueSnackbar(await extractPriceOffError(err, 'Upload failed'), { variant: 'error' });
+      enqueueSnackbar(await extractPriceOffError(err, 'Preview failed'), { variant: 'error' });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleCommitPreview = async () => {
+    if (!previewData?.canCommit) return;
+    setCommitting(true);
+    try {
+      const summary = await commitPriceOffCampaigns(previewData.rows);
+      setUploadSummary(summary);
+      setPreviewOpen(false);
+      setPreviewData(null);
+      setUploadErrors([]);
+      enqueueSnackbar(`Saved ${summary.successfullyParsedRows} draft campaign(s)`, { variant: 'success' });
+      setSelected(new Set());
+      await loadCampaigns();
+    } catch (err) {
+      enqueueSnackbar(await extractPriceOffError(err, 'Commit failed'), { variant: 'error' });
+    } finally {
+      setCommitting(false);
     }
   };
 
@@ -246,13 +326,37 @@ export default function PriceOffsDashboard() {
     }
   };
 
-  const handleBulkCampaignIdSave = async () => {
-    if (!selected.size) return;
+  const handleOpenEdit = () => {
+    if (activeCampaign?.approvalStatus !== 'DRAFT') return;
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async (payload) => {
+    if (!activeCampaign) return;
+    setSavingEdit(true);
     try {
-      await bulkUpdatePriceOffCampaignId([...selected], bulkCampaignId);
-      enqueueSnackbar(`Campaign ID updated for ${selected.size} record(s)`, { variant: 'success' });
+      await updatePriceOffCampaign(activeCampaign.id, payload);
+      const fresh = await fetchPriceOffCampaign(activeCampaign.id);
+      setActiveCampaign(fresh);
+      setEditDialogOpen(false);
+      enqueueSnackbar('Draft campaign updated', { variant: 'success' });
+      await loadCampaigns();
+    } catch (err) {
+      enqueueSnackbar(await extractPriceOffError(err, 'Failed to update campaign'), { variant: 'error' });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleBulkCampaignIdSave = async () => {
+    const ids = selectedCampaignIdRows.map((row) => row.id);
+    if (!ids.length) return;
+    try {
+      await bulkUpdatePriceOffCampaignId(ids, bulkCampaignId);
+      enqueueSnackbar(`Campaign ID updated for ${ids.length} record(s)`, { variant: 'success' });
       setBulkDialogOpen(false);
       setBulkCampaignId('');
+      removeFromSelection(ids);
       await loadCampaigns();
     } catch (err) {
       enqueueSnackbar(await extractPriceOffError(err, 'Bulk campaign ID update failed'), { variant: 'error' });
@@ -260,11 +364,13 @@ export default function PriceOffsDashboard() {
   };
 
   const handleBulkSubmit = async () => {
-    if (!selected.size) return;
+    const ids = selectedDraftRows.map((row) => row.id);
+    if (!ids.length) return;
     setSubmitting(true);
     try {
-      await bulkSubmitPriceOffs([...selected]);
-      enqueueSnackbar(`${selected.size} campaign(s) submitted for approval`, { variant: 'success' });
+      await bulkSubmitPriceOffs(ids);
+      enqueueSnackbar(`${ids.length} campaign(s) submitted for approval`, { variant: 'success' });
+      removeFromSelection(ids);
       await loadCampaigns();
     } catch (err) {
       enqueueSnackbar(await extractPriceOffError(err, 'Submit failed'), { variant: 'error' });
@@ -274,11 +380,13 @@ export default function PriceOffsDashboard() {
   };
 
   const handleBulkDelete = async () => {
-    if (!selected.size) return;
+    const ids = selectedDraftRows.map((row) => row.id);
+    if (!ids.length) return;
     setDeleting(true);
     try {
-      await bulkDeletePriceOffs([...selected]);
-      enqueueSnackbar(`${selected.size} draft campaign(s) deleted`, { variant: 'success' });
+      await bulkDeletePriceOffs(ids);
+      enqueueSnackbar(`${ids.length} draft campaign(s) deleted`, { variant: 'success' });
+      removeFromSelection(ids);
       await loadCampaigns();
     } catch (err) {
       enqueueSnackbar(await extractPriceOffError(err, 'Delete failed'), { variant: 'error' });
@@ -301,7 +409,7 @@ export default function PriceOffsDashboard() {
     <Box sx={{ p: 3 }}>
       <PageHeader
         title="Consumer Price Offs"
-        subtitle="Upload campaigns as DRAFT, submit for approval, then assign campaign IDs to go live."
+        subtitle="Preview Excel uploads, fix errors, then commit all-or-nothing as DRAFT."
       />
 
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -319,7 +427,7 @@ export default function PriceOffsDashboard() {
           disabled={!allDraftSelected || submitting}
           onClick={handleBulkSubmit}
         >
-          Submit for Approval ({selected.size})
+          Submit for Approval ({selectedDraftRows.length})
         </Button>
         <Button
           variant="outlined"
@@ -328,14 +436,14 @@ export default function PriceOffsDashboard() {
           disabled={!allDraftSelected || deleting}
           onClick={handleBulkDelete}
         >
-          Delete ({selected.size})
+          Delete ({selectedDraftRows.length})
         </Button>
         <Button
           variant="outlined"
           disabled={!allCampaignIdEligible}
           onClick={() => setBulkDialogOpen(true)}
         >
-          Update Campaign ID ({selected.size})
+          Update Campaign ID ({selectedCampaignIdRows.length})
         </Button>
       </Box>
 
@@ -364,16 +472,34 @@ export default function PriceOffsDashboard() {
         ) : (
           <>
             <UploadFile sx={{ fontSize: 28, color: 'text.secondary', mb: 0.5 }} />
-            <Typography variant="body2" fontWeight={600}>Upload Excel — rows save as DRAFT</Typography>
+            <Typography variant="body2" fontWeight={600}>Upload Excel — preview & validate before save</Typography>
           </>
         )}
       </Box>
 
+      {uploadSummary && (
+        <Alert
+          severity={uploadSummary.errorRows > 0 ? 'warning' : 'success'}
+          sx={{ mb: 3, borderRadius: '8px' }}
+          onClose={() => setUploadSummary(null)}
+        >
+          <Typography variant="subtitle1" fontWeight="bold">
+            Commit Successful: {uploadSummary.successfullyParsedRows} Drafts Created
+          </Typography>
+          <Typography variant="body2">
+            Total Campaign Allocation: {Number(uploadSummary.totalCampaignQuantity).toLocaleString('en-IN')} units
+          </Typography>
+          <Typography variant="body2">
+            Total Expected Credit Note: ₹ {Number(uploadSummary.totalExpectedCreditNote).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Typography>
+        </Alert>
+      )}
+
       {uploadErrors.length > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          {uploadErrors.map((error) => (
-            <Typography key={`${error.rowNumber}-${error.message}`} variant="caption" display="block">
-              Row {error.rowNumber}: {error.message}
+          {uploadErrors.map((error, index) => (
+            <Typography key={`upload-error-${index}`} variant="caption" display="block">
+              {error}
             </Typography>
           ))}
         </Alert>
@@ -410,7 +536,7 @@ export default function PriceOffsDashboard() {
                     onChange={toggleSelectAllVisible}
                     disabled={visibleIds.length === 0}
                     sx={{ p: 0.5 }}
-                    inputProps={{ 'aria-label': 'Select all campaigns on this page' }}
+                    aria-label="Select all campaigns on this page"
                   />
                 </StickyCheckboxCell>
               <TableCell sx={filterHeaderFlexCellSx(PRICE_OFF_COLUMN_WIDTHS.product.minWidth)}>
@@ -431,6 +557,9 @@ export default function PriceOffsDashboard() {
                     onChange={(v) => updateFilter('product', v)}
                   />
                 </HeaderFilterStack>
+              </TableCell>
+              <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.manufacturer || 140)}>
+                <HeaderLabel>Manufacturer</HeaderLabel>
               </TableCell>
               <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.l3Category)}>
                 <HeaderLabel>L3 Category</HeaderLabel>
@@ -500,6 +629,17 @@ export default function PriceOffsDashboard() {
               <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.maxUnitCap)}>
                 <HeaderLabel>Max Cap</HeaderLabel>
               </TableCell>
+              {locationCodes.map((code) => (
+                <TableCell key={`header-loc-${code}`} sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.locationZone)}>
+                  <HeaderLabel>{code}</HeaderLabel>
+                </TableCell>
+              ))}
+              <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.totalQty)}>
+                <HeaderLabel>Total Qty</HeaderLabel>
+              </TableCell>
+              <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.creditNote)}>
+                <HeaderLabel>Credit Note</HeaderLabel>
+              </TableCell>
               <TableCell sx={filterHeaderCellSx(PRICE_OFF_COLUMN_WIDTHS.campaignId)}>
                 <HeaderFilterStack label="Campaign ID">
                   <HeaderTextFilter
@@ -531,18 +671,33 @@ export default function PriceOffsDashboard() {
           </TableHead>
           <TableBody>
             {!loading && campaigns.map((row) => (
-              <TableRow key={row.id} hover sx={{ cursor: 'pointer' }} onClick={() => openDetail(row)}>
+              <TableRow
+                key={row.id}
+                hover
+                sx={{
+                  cursor: 'pointer',
+                  bgcolor: row.isNegativeMargin ? 'error.light' : undefined,
+                }}
+                onClick={() => openDetail(row)}
+              >
                 <StickyCheckboxCell onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     size="small"
                     checked={selected.has(row.id)}
                     onChange={() => toggleSelect(row.id)}
                     sx={{ p: 0.5 }}
-                    inputProps={{ 'aria-label': `Select campaign ${row.id}` }}
+                    aria-label={`Select campaign ${row.id}`}
                   />
                 </StickyCheckboxCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.product.minWidth, { flex: true })}>
-                  <PriceOffProductCell name={row.productName} code={row.productCode} />
+                  <PriceOffProductCell
+                    name={row.productName}
+                    code={row.productCode}
+                    negativeMargin={row.isNegativeMargin}
+                  />
+                </TableCell>
+                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.manufacturer || 140)}>
+                  <PriceOffTextCell value={row.manufacturerName} />
                 </TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.l3Category)}>
                   <PriceOffTextCell value={row.l3Category} />
@@ -568,6 +723,20 @@ export default function PriceOffsDashboard() {
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.percentOff)}>{formatPercent(row.percentOff)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.finalMarginPercent)}>{formatPercent(row.finalMarginPercent)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.maxUnitCap)}>{row.maxUnitCap ?? '—'}</TableCell>
+                {locationCodes.map((code) => {
+                  const qty = resolveLocationAllocation(row, code);
+                  return (
+                    <TableCell key={`${row.id}-loc-${code}`} sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.locationZone)}>
+                      {qty > 0 ? qty : '—'}
+                    </TableCell>
+                  );
+                })}
+                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.totalQty, { fontWeight: 600 })}>
+                  {row.totalQty ?? '—'}
+                </TableCell>
+                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.creditNote, { fontWeight: 600 })}>
+                  {formatCreditNote(row.creditNote)}
+                </TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.campaignId)}>
                   <PriceOffTextCell value={row.campaignId} />
                 </TableCell>
@@ -591,6 +760,31 @@ export default function PriceOffsDashboard() {
         onSaveCampaignId={handleSaveCampaignId}
         savingCampaignId={savingCampaignId}
         allowCampaignIdEdit={['APPROVED', 'PENDING_ACTIVATION'].includes(activeCampaign?.displayStatus)}
+        allowCampaignEdit={activeCampaign?.approvalStatus === 'DRAFT'}
+        onEditCampaign={handleOpenEdit}
+      />
+
+      <PriceOffEditDialog
+        open={editDialogOpen}
+        campaign={activeCampaign}
+        locations={allLocations}
+        channelOptions={channelOptions}
+        saving={savingEdit}
+        onClose={() => setEditDialogOpen(false)}
+        onSave={handleSaveEdit}
+      />
+
+      <PriceOffUploadPreviewDialog
+        open={previewOpen}
+        preview={previewData}
+        committing={committing}
+        onClose={() => {
+          if (!committing) {
+            setPreviewOpen(false);
+            setPreviewData(null);
+          }
+        }}
+        onCommit={handleCommitPreview}
       />
 
       <Dialog open={bulkDialogOpen} onClose={() => setBulkDialogOpen(false)} maxWidth="xs" fullWidth>

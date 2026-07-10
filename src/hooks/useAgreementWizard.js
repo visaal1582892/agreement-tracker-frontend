@@ -12,7 +12,9 @@ export function createBlankAgreement() {
       startDate: null,
       expiryDate: null,
       notes: '',
-      stateIds: [],
+      geographyMode: 'MIXED',
+      partnerStates: [],
+      partnerCities: [],
       documents: [],
       adhocSubType: null,
       quantityCap: '',
@@ -54,12 +56,11 @@ export function createBlankAgreement() {
 const INITIAL_STATE = {
   step: 0,
   agreementName: '',
-  companyId: null,
-  companyName: '',
-  companyAgreementGroupId: null,
-  companyAgreementGroupName: '',
-  newCompanyAgreementGroupName: '',
+  agreementGroupId: null,
+  agreementGroupName: '',
+  newAgreementGroupName: '',
   vendorIds: [],
+  vendors: [],
   productRules: {
     manufacturers: [],
     divisionRules: [],
@@ -68,11 +69,30 @@ const INITIAL_STATE = {
   agreement: createBlankAgreement(),
 };
 
-function mapProductRulesFromApi(agreement) {
+export function mapProductRulesFromApi(agreement) {
   return {
-    manufacturers: agreement.manufacturerIds ?? [],
-    divisionRules: agreement.divisionRules?.map((r) => ({ id: r.id, ruleType: r.ruleType })) ?? [],
-    productRules: agreement.productRules?.map((r) => ({ id: r.id, ruleType: r.ruleType })) ?? [],
+    manufacturers: agreement.manufacturers?.map((m) => m.id) ?? agreement.manufacturerIds ?? [],
+    manufacturerOptions: agreement.manufacturers?.map((m) => ({
+      id: m.id,
+      manufacturerName: m.name,
+    })) ?? [],
+    divisionRules: agreement.divisionRules?.map((r) => ({
+      id: r.id,
+      ruleType: r.ruleType,
+      name: r.name,
+    })) ?? [],
+    productRules: agreement.productRules?.map((r) => ({
+      id: r.id,
+      ruleType: r.ruleType,
+      name: r.name,
+    })) ?? [],
+    computedProductPreview: agreement.products?.map((product) => ({
+      productId: product.productId,
+      productName: product.productName,
+      divisionName: product.divisionName,
+    })) ?? [],
+    productScopeComputeStatus: agreement.productScopeComputeStatus,
+    productScopeComputeError: agreement.productScopeComputeError,
   };
 }
 
@@ -200,6 +220,7 @@ export function useAgreementWizard() {
         ...prev,
         agreementName: '',
         vendorIds: [],
+        vendors: [],
         productRules: {
           manufacturers: [],
           divisionRules: [],
@@ -215,7 +236,9 @@ export function useAgreementWizard() {
             startDate: preservedDetails.startDate ?? null,
             expiryDate: preservedDetails.expiryDate ?? null,
             notes: preservedDetails.notes ?? '',
-            stateIds: [],
+            geographyMode: 'MIXED',
+            partnerStates: [],
+            partnerCities: [],
             documents: [],
             adhocSubType: null,
             quantityCap: '',
@@ -236,12 +259,11 @@ export function useAgreementWizard() {
       ...prev,
       step: 0,
       agreementName: '',
-      companyId: prev.companyId,
-      companyName: prev.companyName,
-      companyAgreementGroupId: prev.companyAgreementGroupId,
-      companyAgreementGroupName: prev.companyAgreementGroupName,
-      newCompanyAgreementGroupName: prev.newCompanyAgreementGroupName,
+      agreementGroupId: prev.agreementGroupId,
+      agreementGroupName: prev.agreementGroupName,
+      newAgreementGroupName: prev.newAgreementGroupName,
       vendorIds: [],
+      vendors: [],
       productRules: {
         manufacturers: [],
         divisionRules: [],
@@ -261,12 +283,14 @@ export function useAgreementWizard() {
     setState({
       step: 0,
       agreementName: agreement.agreementName ?? '',
-      companyId: agreement.companyId ?? null,
-      companyName: agreement.companyName ?? '',
-      companyAgreementGroupId: agreement.companyAgreementGroupId ?? null,
-      companyAgreementGroupName: agreement.companyAgreementGroupName ?? '',
-      newCompanyAgreementGroupName: '',
+      agreementGroupId: agreement.agreementGroupId ?? null,
+      agreementGroupName: agreement.agreementGroupName ?? '',
+      newAgreementGroupName: '',
       vendorIds: agreement.vendors?.map((v) => v.vendorId) ?? [],
+      vendors: agreement.vendors?.map((v) => ({
+        vendorId: v.vendorId,
+        vendorName: v.vendorName,
+      })) ?? [],
       productRules: mapProductRulesFromApi(agreement),
       agreement: {
         id: `agr-edit-${agreement.id}`,
@@ -277,7 +301,9 @@ export function useAgreementWizard() {
           startDate: agreement.startDate ?? null,
           expiryDate: agreement.expiryDate ?? null,
           notes: agreement.notes ?? '',
-          stateIds: agreement.stateIds ?? agreement.states?.map((s) => s.id) ?? [],
+          geographyMode: agreement.geographyMode ?? 'MIXED',
+          partnerStates: Array.isArray(agreement.partnerStates) ? agreement.partnerStates : [],
+          partnerCities: Array.isArray(agreement.partnerCities) ? agreement.partnerCities : [],
           documents: [],
           adhocSubType: agreement.adhocSubType === 'CONSUMER_PRICE_OFF' || !agreement.adhocSubType
             ? 'QPS'
@@ -302,11 +328,13 @@ export function useAgreementWizard() {
       ...prev,
       step: 0,
       agreementName: '',
-      companyId: cloned.companyId ?? null,
-      companyName: cloned.companyName ?? '',
-      companyAgreementGroupId: cloned.companyAgreementGroupId ?? prev.companyAgreementGroupId,
-      companyAgreementGroupName: cloned.companyAgreementGroupName ?? prev.companyAgreementGroupName,
+      agreementGroupId: cloned.agreementGroupId ?? prev.agreementGroupId,
+      agreementGroupName: cloned.agreementGroupName ?? prev.agreementGroupName,
       vendorIds: cloned.vendors?.map((v) => v.vendorId) ?? [],
+      vendors: cloned.vendors?.map((v) => ({
+        vendorId: v.vendorId,
+        vendorName: v.vendorName,
+      })) ?? [],
       productRules: mapProductRulesFromApi(cloned),
       agreement: createBlankAgreement(),
     }));

@@ -20,14 +20,11 @@ export const ROUTES = {
   ADMIN_USERS: '/admin/users',
 
   MASTER: '/master',
-  MASTER_COMPANIES: '/master/companies',
-  MASTER_VENDORS: '/master/vendors',
-  MASTER_MANUFACTURERS: '/master/manufacturers',
-  MASTER_DIVISIONS: '/master/divisions',
-  MASTER_PRODUCTS: '/master/products',
+  MASTER_AGREEMENT_GROUPS: '/master/agreement-groups',
   MASTER_INCOME_TYPES: '/master/income-types',
   MASTER_AGREEMENT_TYPES: '/master/agreement-types',
   MASTER_STATES: '/master/states',
+  MASTER_PRICE_OFF_LOCATIONS: '/master/price-off-locations',
   MASTER_ROLES: '/master/roles',
   MASTER_RIGHTS: '/master/rights',
 };

@@ -23,14 +23,11 @@ import PriceOffsDashboard from './pages/price-offs/PriceOffsDashboard';
 import PriceOffsApprovalHub from './pages/price-offs/PriceOffsApprovalHub';
 import UserManagementPage from './pages/admin/UserManagementPage';
 import MasterDataLayout from './pages/master/MasterDataLayout';
-import CompanyMasterPage from './pages/master/CompanyMasterPage';
-import VendorMasterPage from './pages/master/VendorMasterPage';
-import ManufacturerMasterPage from './pages/master/ManufacturerMasterPage';
-import DivisionMasterPage from './pages/master/DivisionMasterPage';
-import ProductMasterPage from './pages/master/ProductMasterPage';
+import AgreementGroupMasterPage from './pages/master/AgreementGroupMasterPage';
 import IncomeTypePage from './pages/master/IncomeTypePage';
 import AgreementTypePage from './pages/master/AgreementTypePage';
 import StateMasterPage from './pages/master/StateMasterPage';
+import PriceOffLocationMasterPage from './pages/master/PriceOffLocationMasterPage';
 import RolePage from './pages/master/RolePage';
 import RightPage from './pages/master/RightPage';
 
@@ -91,15 +88,12 @@ export default function App() {
 
                     <Route element={<RightRoute rights={[RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE]} />}>
                       <Route path={ROUTES.MASTER} element={<MasterDataLayout />}>
-                        <Route index element={<Navigate to={ROUTES.MASTER_COMPANIES} replace />} />
-                        <Route path={ROUTES.MASTER_COMPANIES} element={<CompanyMasterPage />} />
-                        <Route path={ROUTES.MASTER_VENDORS} element={<VendorMasterPage />} />
-                        <Route path={ROUTES.MASTER_MANUFACTURERS} element={<ManufacturerMasterPage />} />
-                        <Route path={ROUTES.MASTER_DIVISIONS} element={<DivisionMasterPage />} />
-                        <Route path={ROUTES.MASTER_PRODUCTS} element={<ProductMasterPage />} />
+                        <Route index element={<Navigate to={ROUTES.MASTER_AGREEMENT_GROUPS} replace />} />
+                        <Route path={ROUTES.MASTER_AGREEMENT_GROUPS} element={<AgreementGroupMasterPage />} />
                         <Route path={ROUTES.MASTER_INCOME_TYPES} element={<IncomeTypePage />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_TYPES} element={<AgreementTypePage />} />
                         <Route path={ROUTES.MASTER_STATES} element={<StateMasterPage />} />
+                        <Route path={ROUTES.MASTER_PRICE_OFF_LOCATIONS} element={<PriceOffLocationMasterPage />} />
                         <Route path={ROUTES.MASTER_ROLES} element={<RolePage />} />
                         <Route path={ROUTES.MASTER_RIGHTS} element={<RightPage />} />
                       </Route>

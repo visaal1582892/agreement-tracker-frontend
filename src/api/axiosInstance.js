@@ -15,6 +15,10 @@ axiosInstance.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const requestBase = config.baseURL || API_BASE;
+  if (typeof requestBase === 'string' && requestBase.includes('ngrok')) {
+    config.headers['ngrok-skip-browser-warning'] = 'true';
+  }
   return config;
 });
 

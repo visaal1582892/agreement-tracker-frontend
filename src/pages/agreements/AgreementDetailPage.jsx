@@ -26,6 +26,7 @@ import TransferOwnershipModal from '../../components/agreements/TransferOwnershi
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import CommercialsUploadModal from './wizard/CommercialsUploadModal';
 import JbpReviewShowcase from './wizard/JbpReviewShowcase';
+import { resolveAgreementFinancialYearStartMonth } from '../../utils/jbpMatrixUtils';
 import { isCommercialContractsIncomeType } from '../../utils/incomeTypeUtils';
 import dayjs from 'dayjs';
 
@@ -565,7 +566,10 @@ export default function AgreementDetailPage({
               {showJbpMatrix && (
                 <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
                   <Typography fontWeight={600} sx={{ mb: 1.5 }}>JBP Relational Matrix</Typography>
-                  <JbpReviewShowcase agreementVersionId={selectedVersionId} />
+                  <JbpReviewShowcase
+                    agreementVersionId={selectedVersionId}
+                    financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
+                  />
                 </Paper>
               )}
 
@@ -579,6 +583,7 @@ export default function AgreementDetailPage({
                     slabs={slabs}
                     startDate={agreement.startDate}
                     expiryDate={agreement.expiryDate}
+                    financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
                   />
                 </Paper>
               )}

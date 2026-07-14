@@ -15,6 +15,7 @@ import {
   upsertTarget,
   uploadCommercialTargets,
 } from '../../../api/commercialApi';
+import { formatTimePeriodDisplay } from '../../../utils/timePeriodDisplayUtils';
 
 const FREQUENCY_OPTIONS = [
   { value: 'ONE_TIME', label: 'One Time' },
@@ -69,6 +70,7 @@ export default function CommercialsUploadModal({
   readOnly = false,
   embedded = false,
   lockOneTimeFrequency = false,
+  financialYearStartMonth = 4,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const [previewRows, setPreviewRows] = useState([]);
@@ -321,7 +323,7 @@ export default function CommercialsUploadModal({
                   {previewRows.map((row) => (
                     <Box component="tr" key={row.timePeriodId}>
                       <Box component="td" sx={{ ...stickyPeriodSx, px: 2, py: 1.25 }}>
-                        {row.name}
+                        {formatTimePeriodDisplay(row.name, financialYearStartMonth)}
                       </Box>
                       {slabs.map((slab) => {
                         const isEditing = editingCell?.timePeriodId === row.timePeriodId

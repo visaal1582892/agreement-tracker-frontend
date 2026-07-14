@@ -3,7 +3,7 @@ import {
   Box, Typography, Tabs, Tab, Paper, alpha,
 } from '@mui/material';
 import {
-  GroupWork, AttachMoney, Description, ManageAccounts, Security, Map, PinDrop,
+  GroupWork, AttachMoney, Description, ManageAccounts, Security, PinDrop, People,
 } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import { ROUTES } from '../../config/routes';
@@ -14,8 +14,9 @@ const MASTER_TABS = [
   { label: 'Agreement Groups', icon: <GroupWork />,     path: ROUTES.MASTER_AGREEMENT_GROUPS,    rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Income Types',     icon: <AttachMoney />,   path: ROUTES.MASTER_INCOME_TYPES,        rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Agreement Types',  icon: <Description />,   path: ROUTES.MASTER_AGREEMENT_TYPES,     rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
-  { label: 'States',           icon: <Map />,           path: ROUTES.MASTER_STATES,              rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Price Off Locations', icon: <PinDrop />,    path: ROUTES.MASTER_PRICE_OFF_LOCATIONS, rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Users',            icon: <People />,        path: ROUTES.MASTER_USERS,               rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Role & Rights',    icon: <Security />,      path: ROUTES.MASTER_ROLE_RIGHTS,         rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Roles',            icon: <ManageAccounts />, path: ROUTES.MASTER_ROLES,              rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
   { label: 'Rights',           icon: <Security />,      path: ROUTES.MASTER_RIGHTS,              rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
 ];

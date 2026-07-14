@@ -1,4 +1,5 @@
 import { PAYOUT_FREQUENCY, PAYOUT_FREQUENCY_OPTIONS } from '../constants/commercialStructure';
+import { formatTimePeriodBaseName, formatTimePeriodDisplay } from './timePeriodDisplayUtils';
 
 const JBP_FREQUENCY_OPTIONS = PAYOUT_FREQUENCY_OPTIONS.filter(
   (option) => option.value !== PAYOUT_FREQUENCY.ONE_TIME,
@@ -73,6 +74,21 @@ export function resolveFinancialYearStartMonth(commercials = {}) {
   return 4;
 }
 
+export function resolveAgreementFinancialYearStartMonth({
+  commercials,
+  version,
+} = {}) {
+  const fromCommercials = Number(commercials?.financialYearStartMonth);
+  if (Number.isInteger(fromCommercials) && fromCommercials >= 1 && fromCommercials <= 12) {
+    return fromCommercials;
+  }
+  const fromVersion = Number(version?.financialYearStartMonth);
+  if (Number.isInteger(fromVersion) && fromVersion >= 1 && fromVersion <= 12) {
+    return fromVersion;
+  }
+  return 4;
+}
+
 export function resolveJbpReviewHeaders(sheet) {
   if (sheet?.master) {
     return {
@@ -104,13 +120,17 @@ export function resolveJbpReviewHeaders(sheet) {
   };
 }
 
-export function flattenJbpReviewRows(sheet) {
+export function flattenJbpReviewRows(sheet, fyStartMonth = resolveFinancialYearStartMonth()) {
   const highestParentTier = sheet?.master === true;
   return (sheet?.rows ?? []).map((row) => ({
     key: `${row.timePeriodId}-${row.jbpConfigurationId}-${row.slabTierNumber}`,
-    parentPeriodDisplay: row.firstInParentGroup ? row.parentPeriodName : '',
-    subPeriodName: row.subPeriodName ?? (sheet.master ? '' : '—'),
-    periodName: sheet.master ? row.parentPeriodName : null,
+    parentPeriodDisplay: row.firstInParentGroup
+      ? formatTimePeriodDisplay(row.parentPeriodName, fyStartMonth)
+      : '',
+    subPeriodName: row.subPeriodName
+      ? formatTimePeriodBaseName(row.subPeriodName)
+      : (sheet.master ? '' : '—'),
+    periodName: sheet.master ? formatTimePeriodDisplay(row.parentPeriodName, fyStartMonth) : null,
     slabTier: row.slabTierLabel || `Slab ${row.slabTierNumber}`,
     targetType: highestParentTier ? 'ABSOLUTE' : (row.targetType ?? '—'),
     targetTypeLocked: highestParentTier,

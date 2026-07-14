@@ -78,10 +78,14 @@ export default function NotificationBell() {
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleClose}
+        disableAutoFocusItem
+        disableEnforceFocus
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        PaperProps={{
-          sx: { mt: 1, minWidth: 320, maxWidth: 380, borderRadius: 2 },
+        slotProps={{
+          paper: {
+            sx: { mt: 1, minWidth: 320, maxWidth: 380, borderRadius: 2 },
+          },
         }}
       >
         <Box sx={{ px: 2, py: 1.5 }}>

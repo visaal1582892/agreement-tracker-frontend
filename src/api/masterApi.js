@@ -78,3 +78,9 @@ export const rightApi = {
   update:       (id, d) => update(ENDPOINTS.MASTER_RIGHT_BY_ID(id), d),
   toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_RIGHT_TOGGLE(id)),
 };
+
+export const roleRightApi = {
+  getMatrix:    ()    => getAll(ENDPOINTS.MASTER_ROLE_RIGHTS),
+  getForRole:   (id)  => getById(ENDPOINTS.MASTER_ROLE_RIGHTS_BY_ROLE(id)),
+  updateForRole:(id, rightCodes) => update(ENDPOINTS.MASTER_ROLE_RIGHTS_BY_ROLE(id), rightCodes),
+};

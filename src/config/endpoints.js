@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7070/api';
 
 export const API_BASE = BASE;
 
@@ -14,6 +14,8 @@ export const ENDPOINTS = {
   USER_SEARCH: `${BASE}/users/search`,
   USER_LOOKUP: `${BASE}/users/lookup`,
   USER_ROLES: (id) => `${BASE}/users/${id}/roles`,
+  USER_CHANGE_PASSWORD: `${BASE}/users/change-password`,
+  USER_RESET_PASSWORD: (id) => `${BASE}/users/${id}/reset-password`,
 
   // Parent agreements (ex-groups)
   AGREEMENTS: `${BASE}/agreements`,
@@ -128,6 +130,9 @@ export const ENDPOINTS = {
   MASTER_RIGHT_BY_ID: (id) => `${BASE}/master/rights/${id}`,
   MASTER_RIGHT_TOGGLE: (id) => `${BASE}/master/rights/${id}/toggle-status`,
 
+  MASTER_ROLE_RIGHTS: `${BASE}/master/role-rights`,
+  MASTER_ROLE_RIGHTS_BY_ROLE: (roleId) => `${BASE}/master/role-rights/${roleId}`,
+
   PRICE_OFFS: `${BASE}/price-offs`,
   PRICE_OFFS_LOCATIONS: `${BASE}/price-offs/locations`,
   PRICE_OFFS_FILTER_OPTIONS: `${BASE}/price-offs/filter-options`,
@@ -145,4 +150,8 @@ export const ENDPOINTS = {
   PRICE_OFFS_BULK_REJECT: `${BASE}/price-offs/bulk-reject`,
   PRICE_OFF_APPROVE: (id) => `${BASE}/price-offs/${id}/approve`,
   PRICE_OFF_REJECT: (id) => `${BASE}/price-offs/${id}/reject`,
+
+  // File upload proxy
+  UPLOAD_ASSET: `${BASE}/upload/asset`,
+  UPLOAD_PROXY_DOWNLOAD: `${BASE}/upload/proxy-download`,
 };

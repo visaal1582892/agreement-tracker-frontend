@@ -26,7 +26,7 @@ export default function WizardSectionCard({
         </Typography>
         <WizardInfoTooltip text={description} iconSize={15} />
       </Box>
-      <Box>{children}</Box>
+      <Box sx={{ overflow: 'visible' }}>{children}</Box>
     </Paper>
   );
 }

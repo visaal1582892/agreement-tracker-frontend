@@ -13,7 +13,7 @@ import { useMasterPage } from '../../hooks/useMasterPage';
 import { BRAND } from '../../config/theme';
 import { isRecordActive } from '../../utils/masterUtils';
 
-const ROLE_NAMES = ['ADMIN', 'ACCOUNT_MANAGER', 'APPROVER', 'LEADERSHIP', 'FINANCE'];
+const ROLE_NAMES = ['ADMIN', 'ACCOUNT_MANAGER', 'APPROVER'];
 
 const COLUMNS = buildMasterColumns([
   masterIdColumn(),

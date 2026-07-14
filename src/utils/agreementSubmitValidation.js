@@ -15,8 +15,10 @@ export function validateAgreementForSubmit(state, enqueueSnackbar) {
     enqueueSnackbar('Cannot submit: At least one Manufacturer is required.', { variant: 'warning' });
     return false;
   }
-  if (!state.productRules?.divisionRules?.length) {
-    enqueueSnackbar('Cannot submit: At least one Division is required.', { variant: 'warning' });
+  const hasExplicitProductRules = (state.productRules?.productRules?.length ?? 0) > 0;
+  const hasComputedProducts = (state.productRules?.computedProductPreview?.length ?? 0) > 0;
+  if (!hasExplicitProductRules && !hasComputedProducts) {
+    enqueueSnackbar('Cannot submit: At least one Product is required.', { variant: 'warning' });
     return false;
   }
   if (!state.agreement) {
@@ -50,7 +52,14 @@ export function validateAgreementForSubmit(state, enqueueSnackbar) {
     enqueueSnackbar('Cannot submit: Commercial Value is missing for FLAT structure.', { variant: 'warning' });
     return false;
   }
-  if (!details.documents?.length) {
+  const documents = details.documents ?? [];
+  const uploadsInProgress = documents.some((doc) => doc.uploadStatus === 'uploading');
+  const uploadedDocuments = documents.filter((doc) => doc.fileUrl && doc.uploadStatus !== 'error');
+  if (uploadsInProgress) {
+    enqueueSnackbar('Cannot submit: Document uploads are still in progress.', { variant: 'warning' });
+    return false;
+  }
+  if (!uploadedDocuments.length) {
     enqueueSnackbar('Cannot submit: At least one document must be uploaded.', { variant: 'warning' });
     return false;
   }

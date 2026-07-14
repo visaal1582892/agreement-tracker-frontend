@@ -44,7 +44,13 @@ import {
 import {
   buildAgreementEditPath,
   buildAgreementDetailPath,
+  buildGroupWizardPath,
 } from '../../utils/agreementNavigation';
+import {
+  getRememberedWizardStep,
+  rememberWizardStep,
+  resolveWizardStepForAgreement,
+} from '../../utils/wizardStepPersistence';
 import Step1Setup from './wizard/Step1Setup';
 import ConfigurationStep from './wizard/ConfigurationStep';
 import CommercialStructureStep from './wizard/CommercialStructureStep';
@@ -53,12 +59,41 @@ import WizardErrorBoundary from '../../components/wizard/WizardErrorBoundary';
 import { resolveStructureType, STRUCTURE_TYPE } from '../../constants/commercialStructure';
 import { incomeTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
 
+function getAgreementPersistenceKey(agreement, fallbackId = null) {
+  return agreement?.agreementId ?? agreement?.id ?? fallbackId;
+}
+
+function applyLoadedDraftStep({
+  loaded,
+  slabCount,
+  searchParams,
+  setSearchParams,
+  restoreFromPersisted,
+  setMaxReachableStep,
+}) {
+  const stepKey = getAgreementPersistenceKey(loaded);
+  const resolvedStep = resolveWizardStepForAgreement(stepKey, {
+    urlStepParam: searchParams.get('step'),
+    isActiveAgreement: true,
+  });
+  restoreFromPersisted(loaded, { slabCount, step: resolvedStep });
+  setMaxReachableStep((prev) => Math.max(prev, resolvedStep));
+  if (stepKey) rememberWizardStep(stepKey, resolvedStep);
+  if (!searchParams.get('step')) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('step', String(urlStepFromInternal(resolvedStep)));
+    setSearchParams(nextParams, { replace: true });
+  }
+  return resolvedStep;
+}
+
 export default function AgreementEditPage() {
   const { agreementVersionId: agreementId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const hydratedRef = useRef(false);
+  const persistedSlabCountRef = useRef(null);
 
   const {
     state,
@@ -69,6 +104,7 @@ export default function AgreementEditPage() {
     updateAgreementCommercials,
     reset,
     hydrateFromEdit,
+    restoreFromPersisted,
     resetVariableFieldsForAnother,
     resetAfterIncomeTypeChange,
     resetForCreateAnother,
@@ -116,22 +152,20 @@ export default function AgreementEditPage() {
     const incomeChanged = incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncome);
     const agreementTypeChanged = baselineAgreementTypeId != null
       && String(baselineAgreementTypeId) !== String(currentAgreementType);
-    if (!incomeChanged && !agreementTypeChanged) return false;
-    resetAfterIncomeTypeChange();
+    if (!incomeChanged && !agreementTypeChanged) return null;
+
+    const nextState = resetAfterIncomeTypeChange(state);
     const message = incomeChanged && agreementTypeChanged
       ? 'Income Type and Agreement Type changed. Downstream configurations have been reset.'
       : incomeChanged
         ? 'Income Type changed. Downstream configurations have been reset.'
         : 'Agreement Type changed. Downstream configurations have been reset.';
     enqueueSnackbar(message, { variant: 'warning' });
-    if (incomeChanged) setBaselineIncomeTypeId(currentIncome);
-    if (agreementTypeChanged) setBaselineAgreementTypeId(currentAgreementType);
-    return true;
+    return nextState;
   }, [
     baselineAgreementTypeId,
     baselineIncomeTypeId,
-    state.agreement?.details?.agreementTypeId,
-    state.agreement?.details?.incomeTypeId,
+    state,
     resetAfterIncomeTypeChange,
     enqueueSnackbar,
   ]);
@@ -151,9 +185,17 @@ export default function AgreementEditPage() {
           const slabCount = resolveStructureType(structure) === 'SLABS'
             ? await fetchSlabCountForVersion(loaded.id)
             : null;
+          persistedSlabCountRef.current = slabCount;
           setSourceAgreement(loaded);
           setDraftAgreementId(loaded.id);
-          hydrateFromEdit(loaded, { slabCount });
+          applyLoadedDraftStep({
+            loaded,
+            slabCount,
+            searchParams,
+            setSearchParams,
+            restoreFromPersisted,
+            setMaxReachableStep,
+          });
           hydratedRef.current = true;
           return;
         }
@@ -180,9 +222,17 @@ export default function AgreementEditPage() {
           const slabCount = resolveStructureType(structure) === 'SLABS'
             ? await fetchSlabCountForVersion(existingDraft.id)
             : null;
+          persistedSlabCountRef.current = slabCount;
           setDraftAgreementId(existingDraft.id);
           setSourceAgreement(existingDraft);
-          hydrateFromEdit(existingDraft, { slabCount });
+          applyLoadedDraftStep({
+            loaded: existingDraft,
+            slabCount,
+            searchParams,
+            setSearchParams,
+            restoreFromPersisted,
+            setMaxReachableStep,
+          });
         } else {
           hydrateFromEdit(loaded);
         }
@@ -194,15 +244,26 @@ export default function AgreementEditPage() {
       }
     };
     load();
-  }, [agreementId, hydrateFromEdit, enqueueSnackbar]);
+  }, [agreementId, hydrateFromEdit, restoreFromPersisted, searchParams, setSearchParams, enqueueSnackbar]);
 
-  const syncStepToUrl = useCallback((internalStep, id = draftAgreementId) => {
-    if (!id) return;
+  const getAgreementStepKey = useCallback((agreement = sourceAgreement) => (
+    agreement?.agreementId ?? agreement?.id ?? agreementId
+  ), [agreementId, sourceAgreement]);
+
+  const applyWizardStep = useCallback((internalStep, id = draftAgreementId) => {
+    if (!id || internalStep == null) return;
+    const stepKey = getAgreementStepKey(sourceAgreement);
+    updateStep(internalStep);
+    if (stepKey) rememberWizardStep(stepKey, internalStep);
+    setMaxReachableStep((prev) => Math.max(prev, internalStep));
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('step', String(urlStepFromInternal(internalStep)));
     setSearchParams(nextParams, { replace: true });
-    updateStep(internalStep);
-  }, [draftAgreementId, searchParams, setSearchParams, updateStep]);
+  }, [draftAgreementId, getAgreementStepKey, searchParams, setSearchParams, sourceAgreement, updateStep]);
+
+  const syncStepToUrl = useCallback((internalStep, id = draftAgreementId) => {
+    applyWizardStep(internalStep, id);
+  }, [applyWizardStep, draftAgreementId]);
 
   const urlStepParam = searchParams.get('step');
 
@@ -223,21 +284,20 @@ export default function AgreementEditPage() {
     const clamped = Math.min(requested, maxAccessible);
 
     if (clamped !== requested) {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.set('step', String(urlStepFromInternal(clamped)));
-      setSearchParams(nextParams, { replace: true });
-      updateStep(clamped);
+      applyWizardStep(clamped);
       return;
     }
     if (currentState.step !== clamped) {
       updateStep(clamped);
+      const stepKey = getAgreementStepKey(sourceAgreement);
+      if (stepKey) rememberWizardStep(stepKey, clamped);
     }
   }, [
     urlStepParam,
     sourceAgreement?.id,
     isFreshDraftWizard,
-    searchParams,
-    setSearchParams,
+    applyWizardStep,
+    getAgreementStepKey,
     updateStep,
   ]);
 
@@ -258,11 +318,11 @@ export default function AgreementEditPage() {
     });
   }, []);
 
-  const buildUpdatePayload = useCallback(({ requiresReapproval: forceReapproval } = {}) => {
+  const buildUpdatePayload = useCallback(({ requiresReapproval: forceReapproval, includeDocuments = false } = {}) => {
     const requiresReapproval = forceReapproval ?? (
       !draftAgreementId && (versionSourceId != null || detectRequiresReapproval(reapprovalBaseline, state))
     );
-    return buildSanitizedStep1UpdatePayload(state, { requiresReapproval, sourceAgreement });
+    return buildSanitizedStep1UpdatePayload(state, { requiresReapproval, sourceAgreement, includeDocuments });
   }, [state, reapprovalBaseline, draftAgreementId, versionSourceId, sourceAgreement]);
 
   const handleDraftVersionCreated = useCallback((data) => {
@@ -278,12 +338,14 @@ export default function AgreementEditPage() {
     stateOverride = null,
   } = {}) => {
     const effectiveState = stateOverride ?? state;
+    const includeDocuments = validateStep2 || validateCommercialStructure;
     const payload = stateOverride
       ? buildSanitizedStep1UpdatePayload(effectiveState, {
         requiresReapproval: !draftAgreementId && (versionSourceId != null || detectRequiresReapproval(reapprovalBaseline, effectiveState)),
         sourceAgreement,
+        includeDocuments,
       })
-      : buildUpdatePayload();
+      : buildUpdatePayload({ includeDocuments });
     if (draftAgreementId) {
       const { data } = await axiosInstance.put(
         ENDPOINTS.AGREEMENT_VERSION_UPDATE(draftAgreementId),
@@ -321,12 +383,17 @@ export default function AgreementEditPage() {
 
   const handleSetupNext = async () => {
     if (!validateStep1Fields(state, enqueueSnackbar)) return;
-    maybeSanitizeClassificationChange();
+    const resetState = maybeSanitizeClassificationChange();
+    const effectiveState = resetState ?? state;
     setSavingDraft(true);
     try {
-      await persistDraft({ validateStep1: true });
+      await persistDraft({
+        validateStep1: true,
+        stateOverride: resetState ?? undefined,
+      });
       enqueueSnackbar('Foundational setup saved', { variant: 'success' });
-      setBaselineIncomeTypeId(state.agreement?.details?.incomeTypeId);
+      setBaselineIncomeTypeId(effectiveState.agreement?.details?.incomeTypeId);
+      setBaselineAgreementTypeId(effectiveState.agreement?.details?.agreementTypeId);
       syncStepToUrl(1);
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Complete required step 1 fields', { variant: 'error' });
@@ -352,10 +419,20 @@ export default function AgreementEditPage() {
   };
 
   const handleSaveAndCreateAnother = async () => {
+    if (resolveHighestAccessibleStep(state, sourceAgreement) !== 3) {
+      enqueueSnackbar('Complete Foundational Setup, Configuration, and Commercial Structure before creating another agreement.', {
+        variant: 'warning',
+      });
+      return;
+    }
     if (!validateAgreementDetailsStep(state, enqueueSnackbar, [], sourceAgreement)) return;
     setSavingLoop(true);
     try {
       await persistDraft({ validateStep2: true });
+      const oldKey = getAgreementPersistenceKey(sourceAgreement, draftAgreementId);
+      if (oldKey) {
+        rememberWizardStep(oldKey, state.step);
+      }
       const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENTS, {
         agreementGroupId: state.agreementGroupId,
         vendorIds: [],
@@ -363,18 +440,24 @@ export default function AgreementEditPage() {
         agreements: [],
       });
       const newDraft = data.agreements?.[0];
-      if (!newDraft) {
+      const newAgreementId = newDraft?.agreementId ?? data.primaryAgreementId;
+      if (!newDraft?.id || !newAgreementId) {
         throw new Error('No draft agreement returned from server');
       }
-      resetForCreateAnother();
-      setBaselineIncomeTypeId(null);
+
+      const newKey = getAgreementPersistenceKey(newDraft, newAgreementId);
+      rememberWizardStep(newKey, 0);
       setMaxReachableStep(0);
-      setDraftAgreementId(newDraft.id);
-      setSourceAgreement(newDraft);
-      setVersionSourceId(null);
-      setReapprovalBaseline(null);
-      hydratedRef.current = true;
-      navigate(buildAgreementEditPath(newDraft.id, { step: urlStepFromInternal(0) }), { replace: true });
+
+      if (state.agreementGroupId) {
+        navigate(
+          buildGroupWizardPath(state.agreementGroupId, newAgreementId, { step: urlStepFromInternal(0) }),
+          { replace: true },
+        );
+      } else {
+        hydratedRef.current = false;
+        navigate(buildAgreementEditPath(newDraft.id, { step: urlStepFromInternal(0) }), { replace: true });
+      }
       enqueueSnackbar('Agreement saved — configure another', { variant: 'success' });
     } catch (err) {
       enqueueSnackbar(err.response?.data?.message || 'Failed to save and create another', { variant: 'error' });
@@ -383,9 +466,23 @@ export default function AgreementEditPage() {
     }
   };
 
+  const discardUnsavedWizardStep = useCallback((targetStep) => {
+    if (sourceAgreement) {
+      restoreFromPersisted(sourceAgreement, {
+        step: targetStep,
+        slabCount: persistedSlabCountRef.current,
+      });
+    } else {
+      updateStep(targetStep);
+    }
+    setConfigurationFieldErrors({});
+    setCommercialFieldErrors({});
+  }, [restoreFromPersisted, sourceAgreement, updateStep]);
+
   const handleStepClick = (stepIndex) => {
     if (stepIndex < state.step) {
       if (stepIndex <= maxReachableStep) {
+        discardUnsavedWizardStep(stepIndex);
         syncStepToUrl(stepIndex);
       }
       return;
@@ -544,7 +641,13 @@ export default function AgreementEditPage() {
 
   const handleBack = () => {
     if (state.step === 0) return;
-    syncStepToUrl(state.step - 1);
+    const previousStep = state.step - 1;
+    discardUnsavedWizardStep(previousStep);
+    if (draftAgreementId) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('step', String(urlStepFromInternal(previousStep)));
+      setSearchParams(nextParams, { replace: true });
+    }
   };
 
   const handleSubmitForApproval = async () => {
@@ -689,6 +792,8 @@ export default function AgreementEditPage() {
     );
   }
 
+  const canSaveAndCreateAnother = resolveHighestAccessibleStep(state, sourceAgreement) === 3;
+
   return (
     <WizardErrorBoundary>
       <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -707,6 +812,8 @@ export default function AgreementEditPage() {
             : ROUTES.AGREEMENTS,
         )}
         onSaveAndCreateAnother={isFreshDraftWizard && state.step === 3 ? handleSaveAndCreateAnother : undefined}
+        saveAndCreateAnotherDisabled={!canSaveAndCreateAnother}
+        saveAndCreateAnotherDisabledReason="Complete steps 1–3 (foundational data) before creating another agreement."
         onDetailsNext={isFreshDraftWizard ? handleDetailsNext : undefined}
         onCommercialsNext={isFreshDraftWizard ? handleCommercialsNext : undefined}
         onFinishAndExit={handleFinishAndExit}

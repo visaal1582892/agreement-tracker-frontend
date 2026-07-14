@@ -1,6 +1,9 @@
 /**
  * Draft missing agreement name — route to edit wizard, not read-only detail.
  */
+import { getRememberedWizardStep } from './wizardStepPersistence';
+import { urlStepFromInternal } from './agreementWizardUtils';
+
 export function isIncompleteDraft(agreement) {
   const missingType = !agreement?.agreementTypeId;
   const missingStartDate = !agreement?.startDate;
@@ -42,12 +45,19 @@ export function buildGroupWizardPath(groupId, activeAgreementId, { step } = {}) 
 export function buildDraftEditPath(row, { step, mode = 'group' } = {}) {
   if (row?.approvalStatus !== 'DRAFT') return null;
 
+  const rememberedStep = step != null && step !== ''
+    ? step
+    : (() => {
+      const remembered = getRememberedWizardStep(row.id);
+      return remembered != null ? urlStepFromInternal(remembered) : undefined;
+    })();
+
   if (mode === 'single' && row.latestVersionId) {
-    return buildAgreementEditPath(row.latestVersionId, { step });
+    return buildAgreementEditPath(row.latestVersionId, { step: rememberedStep });
   }
 
   if (!row.agreementGroupId) return null;
-  return buildGroupWizardPath(row.agreementGroupId, row.id, { step });
+  return buildGroupWizardPath(row.agreementGroupId, row.id, { step: rememberedStep });
 }
 
 /**

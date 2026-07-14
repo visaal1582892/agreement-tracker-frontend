@@ -8,6 +8,14 @@ import { BRAND } from '../../../config/theme';
 import DateRangeFields from '../../../components/forms/DateRangeFields';
 import WizardSectionCard from '../../../components/wizard/WizardSectionCard';
 import { getIncomeTypeDisplayName } from '../../../constants/incomeTypeNames';
+import { GEOGRAPHY_MODE } from '../../../constants/geographyMode';
+import { isDataFeeIncomeType } from '../../../utils/incomeTypeUtils';
+
+const resolveSelectValue = (selectedId, options) => {
+  if (selectedId == null || selectedId === '' || options.length === 0) return '';
+  const match = options.find((opt) => String(opt.id) === String(selectedId));
+  return match ? match.id : '';
+};
 
 const notesFieldSx = {
   '& .MuiOutlinedInput-root': {
@@ -32,10 +40,16 @@ export default function Step1FoundationalFields({
 
   const handleIncomeTypeChange = (selectedId) => {
     const selected = incomeTypes.find((type) => String(type.id) === String(selectedId));
-    onUpdateDetails({
+    const updates = {
       incomeTypeId: selectedId,
       incomeTypeName: selected?.name ?? null,
-    });
+    };
+    if (isDataFeeIncomeType(incomeTypes, selectedId, selected?.name)) {
+      updates.geographyMode = GEOGRAPHY_MODE.ALL;
+      updates.partnerStates = [];
+      updates.partnerCities = [];
+    }
+    onUpdateDetails(updates);
   };
 
   return (
@@ -49,7 +63,7 @@ export default function Step1FoundationalFields({
             <FormControl fullWidth size="small">
               <InputLabel required>Income Type</InputLabel>
               <Select
-                value={details.incomeTypeId || ''}
+                value={resolveSelectValue(details.incomeTypeId, incomeTypes)}
                 label="Income Type *"
                 onChange={(e) => handleIncomeTypeChange(e.target.value)}
               >
@@ -63,7 +77,7 @@ export default function Step1FoundationalFields({
             <FormControl fullWidth size="small">
               <InputLabel required>Agreement Type</InputLabel>
               <Select
-                value={details.agreementTypeId || ''}
+                value={resolveSelectValue(details.agreementTypeId, agreementTypes)}
                 label="Agreement Type *"
                 onChange={(e) => onUpdateDetails({ agreementTypeId: e.target.value })}
               >

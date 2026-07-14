@@ -18,13 +18,15 @@ export const ROUTES = {
   PRICE_OFFS_APPROVALS: '/price-offs/approvals',
 
   ADMIN_USERS: '/admin/users',
+  PROFILE: '/profile',
 
   MASTER: '/master',
   MASTER_AGREEMENT_GROUPS: '/master/agreement-groups',
   MASTER_INCOME_TYPES: '/master/income-types',
   MASTER_AGREEMENT_TYPES: '/master/agreement-types',
-  MASTER_STATES: '/master/states',
   MASTER_PRICE_OFF_LOCATIONS: '/master/price-off-locations',
+  MASTER_USERS: '/master/users',
+  MASTER_ROLE_RIGHTS: '/master/role-rights',
   MASTER_ROLES: '/master/roles',
   MASTER_RIGHTS: '/master/rights',
 };

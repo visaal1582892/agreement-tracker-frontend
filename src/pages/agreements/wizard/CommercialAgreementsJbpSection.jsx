@@ -56,6 +56,7 @@ import {
   resolveFinancialYearStartMonth,
   resolveMasterFrequency,
 } from '../../../utils/jbpMatrixUtils';
+import { formatTimePeriodDisplay } from '../../../utils/timePeriodDisplayUtils';
 import JbpMatrixReviewTable from './JbpMatrixReviewTable';
 
 export default function CommercialAgreementsJbpSection({
@@ -508,7 +509,11 @@ export default function CommercialAgreementsJbpSection({
             <Autocomplete
               multiple
               options={parentPeriodOptions}
-              getOptionLabel={(option) => option.name}
+              getOptionLabel={(option) => formatTimePeriodDisplay(
+                option.name,
+                financialYearStartMonth,
+                { calendarMonth: option.monthNumber, calendarYear: option.calendarYear },
+              )}
               isOptionEqualToValue={(option, value) => option.id === value.id}
               getOptionDisabled={(option) => isParentPeriodClaimedElsewhere(config.id, option.id)}
               loading={loadingPeriods}
@@ -602,6 +607,7 @@ export default function CommercialAgreementsJbpSection({
           <JbpMatrixReviewTable
             stagedWorkbook={stagedWorkbook}
             title="Stage 3 — Unpivoted Review Grid"
+            financialYearStartMonth={financialYearStartMonth}
           />
 
           <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>

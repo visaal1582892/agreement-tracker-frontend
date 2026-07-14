@@ -1,57 +1,63 @@
 import { useState, useCallback } from 'react';
 import { mapCommercialsFromApi } from '../utils/agreementWizardUtils';
-import { BLANK_ASSET } from '../utils/incomeTypePayloadUtils';
+import { mapDocumentsFromApi } from '../api/uploadApi';
+import { createBlankAgreement, buildStateAfterClassificationReset } from '../utils/agreementWizardDefaults';
+import { GEOGRAPHY_MODE } from '../constants/geographyMode';
+import { isDataFeeIncomeType } from '../utils/incomeTypeUtils';
 
-export function createBlankAgreement() {
+function resolveGeographyModeFromAgreement(agreement) {
+  if (agreement?.geographyMode) {
+    return agreement.geographyMode;
+  }
+  if (isDataFeeIncomeType([], agreement?.incomeTypeId, agreement?.incomeTypeName)) {
+    return GEOGRAPHY_MODE.ALL;
+  }
+  return GEOGRAPHY_MODE.MIXED;
+}
+
+function mapPersistedAgreementFields(agreement, slabCount = null) {
+  const commercials = mapCommercialsFromApi(agreement, slabCount);
   return {
-    id: `agr-${Date.now()}`,
-    details: {
-      incomeTypeId: null,
-      incomeTypeName: null,
-      agreementTypeId: null,
-      startDate: null,
-      expiryDate: null,
-      notes: '',
-      geographyMode: 'MIXED',
-      partnerStates: [],
-      partnerCities: [],
-      documents: [],
-      adhocSubType: null,
-      quantityCap: '',
-      invoiceVendorId: null,
-      payoutBufferDays: '',
-      leadTimeBasis: null,
-      invoiceGenerationLeadTime: '',
-      calculationBasis: 'VENDOR_INVOICE',
-      paymentRealizationType: 'DIRECT_PAYMENT_INVOICE',
-    },
-    asset: {
-      assetCategory: 'PHYSICAL_ASSET',
-      assetType: '',
-      storeCount: '',
-      payoutMode: 'FLAT',
-      flatPayout: '',
-      payoutPerStore: '',
-      assetPayoutPeriods: [],
-      remarks: '',
-    },
-    commercials: {
-      commercialStructure: 'FLAT',
-      commercialValue: '',
-      valueType: 'FIXED',
-      flatValueType: 'FIXED',
-      flatBaselineFrequency: 'MONTHLY',
-      enableFlatBaseline: true,
-      enableSlabIncentives: false,
-      calculationFormula: '',
-      selectedFrequencies: [],
-      slabType: 'PURCHASE',
-      slabCapUnit: 'RUPEES',
-      jbpCommitted: false,
-      financialYearStartMonth: 4,
+    agreementName: agreement.agreementName ?? '',
+    agreementGroupId: agreement.agreementGroupId ?? null,
+    agreementGroupName: agreement.agreementGroupName ?? '',
+    vendorIds: agreement.vendors?.map((v) => v.vendorId) ?? [],
+    vendors: agreement.vendors?.map((v) => ({
+      vendorId: v.vendorId,
+      vendorName: v.vendorName,
+    })) ?? [],
+    productRules: mapProductRulesFromApi(agreement),
+    agreement: {
+      id: `agr-edit-${agreement.id}`,
+      details: {
+        incomeTypeId: agreement.incomeTypeId ?? null,
+        incomeTypeName: agreement.incomeTypeName ?? null,
+        agreementTypeId: agreement.agreementTypeId ?? null,
+        startDate: agreement.startDate ?? null,
+        expiryDate: agreement.expiryDate ?? null,
+        notes: agreement.notes ?? '',
+        geographyMode: resolveGeographyModeFromAgreement(agreement),
+        partnerStates: Array.isArray(agreement.partnerStates) ? agreement.partnerStates : [],
+        partnerCities: Array.isArray(agreement.partnerCities) ? agreement.partnerCities : [],
+        documents: mapDocumentsFromApi(agreement.documents),
+        adhocSubType: agreement.adhocSubType === 'CONSUMER_PRICE_OFF' || !agreement.adhocSubType
+          ? 'QPS'
+          : agreement.adhocSubType,
+        quantityCap: agreement.quantityCap ?? '',
+        invoiceVendorId: agreement.invoiceVendorId ?? null,
+        payoutBufferDays: agreement.payoutBufferDays ?? '',
+        leadTimeBasis: agreement.leadTimeBasis ?? null,
+        invoiceGenerationLeadTime: agreement.invoiceGenerationLeadTime ?? '',
+        calculationBasis: agreement.calculationBasis ?? 'VENDOR_INVOICE',
+        paymentRealizationType: agreement.paymentRealizationType ?? 'DIRECT_PAYMENT_INVOICE',
+      },
+      asset: mapAssetFromApi(agreement),
+      commercials,
     },
   };
 }
+
+export { createBlankAgreement } from '../utils/agreementWizardDefaults';
 
 const INITIAL_STATE = {
   step: 0,
@@ -212,46 +218,13 @@ export function useAgreementWizard() {
     }));
   }, []);
 
-  const resetAfterIncomeTypeChange = useCallback(() => {
+  const resetAfterIncomeTypeChange = useCallback((baseState = null) => {
+    let nextState = null;
     setState((prev) => {
-      const blank = createBlankAgreement();
-      const preservedDetails = prev.agreement?.details ?? {};
-      return {
-        ...prev,
-        agreementName: '',
-        vendorIds: [],
-        vendors: [],
-        productRules: {
-          manufacturers: [],
-          divisionRules: [],
-          productRules: [],
-        },
-        agreement: {
-          id: prev.agreement?.id ?? blank.id,
-          details: {
-            ...blank.details,
-            incomeTypeId: preservedDetails.incomeTypeId ?? null,
-            incomeTypeName: preservedDetails.incomeTypeName ?? null,
-            agreementTypeId: preservedDetails.agreementTypeId ?? null,
-            startDate: preservedDetails.startDate ?? null,
-            expiryDate: preservedDetails.expiryDate ?? null,
-            notes: preservedDetails.notes ?? '',
-            geographyMode: 'MIXED',
-            partnerStates: [],
-            partnerCities: [],
-            documents: [],
-            adhocSubType: null,
-            quantityCap: '',
-            invoiceVendorId: null,
-            payoutBufferDays: '',
-            calculationBasis: 'VENDOR_INVOICE',
-            paymentRealizationType: 'DIRECT_PAYMENT_INVOICE',
-          },
-          asset: { ...BLANK_ASSET },
-          commercials: { ...blank.commercials },
-        },
-      };
+      nextState = buildStateAfterClassificationReset(baseState ?? prev);
+      return nextState;
     });
+    return nextState;
   }, []);
 
   const resetForCreateAnother = useCallback(() => {
@@ -279,47 +252,26 @@ export function useAgreementWizard() {
 
   const hydrateFromEdit = useCallback((agreement, options = {}) => {
     if (!agreement) return;
-    const commercials = mapCommercialsFromApi(agreement, options.slabCount);
     setState({
       step: 0,
-      agreementName: agreement.agreementName ?? '',
-      agreementGroupId: agreement.agreementGroupId ?? null,
-      agreementGroupName: agreement.agreementGroupName ?? '',
       newAgreementGroupName: '',
-      vendorIds: agreement.vendors?.map((v) => v.vendorId) ?? [],
-      vendors: agreement.vendors?.map((v) => ({
-        vendorId: v.vendorId,
-        vendorName: v.vendorName,
-      })) ?? [],
-      productRules: mapProductRulesFromApi(agreement),
-      agreement: {
-        id: `agr-edit-${agreement.id}`,
-        details: {
-          incomeTypeId: agreement.incomeTypeId ?? null,
-          incomeTypeName: agreement.incomeTypeName ?? null,
-          agreementTypeId: agreement.agreementTypeId ?? null,
-          startDate: agreement.startDate ?? null,
-          expiryDate: agreement.expiryDate ?? null,
-          notes: agreement.notes ?? '',
-          geographyMode: agreement.geographyMode ?? 'MIXED',
-          partnerStates: Array.isArray(agreement.partnerStates) ? agreement.partnerStates : [],
-          partnerCities: Array.isArray(agreement.partnerCities) ? agreement.partnerCities : [],
-          documents: [],
-          adhocSubType: agreement.adhocSubType === 'CONSUMER_PRICE_OFF' || !agreement.adhocSubType
-            ? 'QPS'
-            : agreement.adhocSubType,
-          quantityCap: agreement.quantityCap ?? '',
-          invoiceVendorId: agreement.invoiceVendorId ?? null,
-          payoutBufferDays: agreement.payoutBufferDays ?? '',
-          leadTimeBasis: agreement.leadTimeBasis ?? null,
-          invoiceGenerationLeadTime: agreement.invoiceGenerationLeadTime ?? '',
-          calculationBasis: agreement.calculationBasis ?? 'VENDOR_INVOICE',
-          paymentRealizationType: agreement.paymentRealizationType ?? 'DIRECT_PAYMENT_INVOICE',
-        },
-        asset: mapAssetFromApi(agreement),
-        commercials,
-      },
+      ...mapPersistedAgreementFields(agreement, options.slabCount),
     });
+  }, []);
+
+  const restoreFromPersisted = useCallback((agreement, options = {}) => {
+    if (!agreement) return;
+    const { step = 0, slabCount = null } = options;
+    const mapped = mapPersistedAgreementFields(agreement, slabCount);
+    setState((prev) => ({
+      ...mapped,
+      step,
+      newAgreementGroupName: prev.newAgreementGroupName ?? '',
+      agreement: {
+        ...mapped.agreement,
+        id: prev.agreement?.id ?? mapped.agreement.id,
+      },
+    }));
   }, []);
 
   const applyCloneResponse = useCallback((cloned) => {
@@ -356,6 +308,7 @@ export function useAgreementWizard() {
     resetAfterIncomeTypeChange,
     resetForCreateAnother,
     hydrateFromEdit,
+    restoreFromPersisted,
     applyCloneResponse,
   };
 }

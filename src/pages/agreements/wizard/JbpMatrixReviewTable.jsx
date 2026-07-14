@@ -20,6 +20,7 @@ import {
 export default function JbpMatrixReviewTable({
   stagedWorkbook,
   title = 'JBP Relational Matrix',
+  financialYearStartMonth = 4,
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const sheets = stagedWorkbook?.sheets ?? [];
@@ -27,8 +28,8 @@ export default function JbpMatrixReviewTable({
   const reviewHeaders = resolveJbpReviewHeaders(activeSheet);
 
   const flattenedRows = useMemo(
-    () => flattenJbpReviewRows(activeSheet),
-    [activeSheet],
+    () => flattenJbpReviewRows(activeSheet, financialYearStartMonth),
+    [activeSheet, financialYearStartMonth],
   );
 
   if (!sheets.length) {

@@ -7,7 +7,7 @@ import {
 import {
   Description, Warning, HourglassEmpty, Cancel, EditNote,
   ArrowForward, EventNote, Bolt, Add, LocalOfferOutlined,
-  ManageAccountsOutlined, PeopleOutlined,
+  ManageAccountsOutlined, PeopleOutlined, StorageOutlined,
 } from '@mui/icons-material';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';

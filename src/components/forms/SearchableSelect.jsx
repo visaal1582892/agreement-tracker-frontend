@@ -7,7 +7,6 @@ import {
   InputBase,
   Paper,
   Popover,
-  Popper,
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -42,7 +41,6 @@ export default function SearchableSelect({
   const multi = multiple ?? isMulti;
   const listboxId = useId();
   const containerRef = useRef(null);
-  const anchorRef = useRef(null);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -50,7 +48,6 @@ export default function SearchableSelect({
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [moreAnchor, setMoreAnchor] = useState(null);
-  const [anchorWidth, setAnchorWidth] = useState(0);
 
   const debouncedQuery = useDebounce(searchQuery, SEARCH_DEBOUNCE_MS);
 
@@ -59,9 +56,18 @@ export default function SearchableSelect({
     return Array.isArray(value) ? value : [];
   }, [multi, value]);
 
+  const onSearchRef = useRef(onSearch);
   useEffect(() => {
-    if (onSearch) onSearch(debouncedQuery);
-  }, [debouncedQuery, onSearch]);
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
+
+  const lastNotifiedQueryRef = useRef(null);
+  useEffect(() => {
+    if (!onSearchRef.current) return;
+    if (lastNotifiedQueryRef.current === debouncedQuery) return;
+    lastNotifiedQueryRef.current = debouncedQuery;
+    onSearchRef.current(debouncedQuery);
+  }, [debouncedQuery]);
 
   const displayedOptions = useMemo(() => {
     let opts = options;
@@ -89,15 +95,16 @@ export default function SearchableSelect({
   }, [disabled]);
 
   useEffect(() => {
-    if (!isOpen || !anchorRef.current) return undefined;
+    if (!isOpen) return undefined;
 
-    const updateWidth = () => {
-      if (anchorRef.current) setAnchorWidth(anchorRef.current.offsetWidth);
+    const handleScrollOrResize = () => closeDropdown();
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    return () => {
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
     };
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
-  }, [isOpen]);
+  }, [isOpen, closeDropdown]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -184,7 +191,15 @@ export default function SearchableSelect({
   const borderColor = error ? BRAND.red : isOpen ? BRAND.red : BRAND.borderLight;
 
   return (
-    <Box ref={containerRef} sx={{ position: 'relative', width: '100%' }}>
+    <Box
+      ref={containerRef}
+      sx={{
+        position: 'relative',
+        width: '100%',
+        overflow: 'visible',
+        zIndex: isOpen ? 25 : 'auto',
+      }}
+    >
       {label && (
         <Typography
           component="label"
@@ -206,7 +221,6 @@ export default function SearchableSelect({
       )}
 
       <Box
-        ref={anchorRef}
         onClick={() => inputRef.current?.focus()}
         sx={{
           display: 'flex',
@@ -311,64 +325,63 @@ export default function SearchableSelect({
         </FormHelperText>
       )}
 
-      <Popper
-        open={isOpen}
-        anchorEl={anchorRef.current}
-        placement="bottom-start"
-        modifiers={[
-          { name: 'offset', options: { offset: [0, 4] } },
-          { name: 'flip', enabled: true },
-          { name: 'preventOverflow', options: { padding: 8 } },
-        ]}
-        sx={{ zIndex: (theme) => theme.zIndex.modal + 1 }}
-      >
-        <Box ref={dropdownRef}>
-          <Paper
-          id={listboxId}
-          role="listbox"
-          elevation={3}
+      {isOpen && (
+        <Box
+          ref={dropdownRef}
           sx={{
-            width: anchorWidth || anchorRef.current?.offsetWidth || 'auto',
-            maxHeight: 240,
-            overflowY: 'auto',
-            borderRadius: '8px',
-            border: `1px solid ${BRAND.borderLight}`,
-            boxShadow: BRAND.shadowMd,
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            zIndex: 20,
           }}
         >
-          {displayedOptions.length === 0 && !loading ? (
-            <Typography variant="body2" sx={{ px: 2, py: 1.5, color: BRAND.textSecondary }}>
-              {searchQuery.trim() ? noOptionsText : emptyQueryText}
-            </Typography>
-          ) : (
-            displayedOptions.map((option, index) => {
-              const isHighlighted = index === highlightedIndex;
-              return (
-                <Box
-                  key={option.id ?? getOptionLabel(option)}
-                  role="option"
-                  aria-selected={isHighlighted}
-                  onMouseEnter={() => setHighlightedIndex(index)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => selectOption(option)}
-                  sx={{
-                    px: 2,
-                    py: 1.25,
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    color: BRAND.textPrimary,
-                    bgcolor: isHighlighted ? alpha(BRAND.red, 0.08) : 'transparent',
-                    '&:hover': { bgcolor: alpha(BRAND.red, 0.06) },
-                  }}
-                >
-                  {renderOption ? renderOption(option) : getOptionLabel(option)}
-                </Box>
-              );
-            })
-          )}
+          <Paper
+            id={listboxId}
+            role="listbox"
+            elevation={3}
+            sx={{
+              width: '100%',
+              maxHeight: 240,
+              overflowY: 'auto',
+              borderRadius: '8px',
+              border: `1px solid ${BRAND.borderLight}`,
+              boxShadow: BRAND.shadowMd,
+            }}
+          >
+            {displayedOptions.length === 0 && !loading ? (
+              <Typography variant="body2" sx={{ px: 2, py: 1.5, color: BRAND.textSecondary }}>
+                {searchQuery.trim() ? noOptionsText : emptyQueryText}
+              </Typography>
+            ) : (
+              displayedOptions.map((option, index) => {
+                const isHighlighted = index === highlightedIndex;
+                return (
+                  <Box
+                    key={option.id ?? getOptionLabel(option)}
+                    role="option"
+                    aria-selected={isHighlighted}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectOption(option)}
+                    sx={{
+                      px: 2,
+                      py: 1.25,
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      color: BRAND.textPrimary,
+                      bgcolor: isHighlighted ? alpha(BRAND.red, 0.08) : 'transparent',
+                      '&:hover': { bgcolor: alpha(BRAND.red, 0.06) },
+                    }}
+                  >
+                    {renderOption ? renderOption(option) : getOptionLabel(option)}
+                  </Box>
+                );
+              })
+            )}
           </Paper>
         </Box>
-      </Popper>
+      )}
 
       <Popover
         open={Boolean(moreAnchor)}

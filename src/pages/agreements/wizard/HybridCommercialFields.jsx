@@ -57,6 +57,7 @@ import {
   structureTypeToRadioValue,
   resolveFlatBaselineFrequency,
 } from '../../../constants/commercialStructure';
+import { resolveFinancialYearStartMonth } from '../../../utils/jbpMatrixUtils';
 
 const EMPTY_SLAB_DRAFT = {
   minCap: '',
@@ -86,6 +87,7 @@ export default function HybridCommercialFields({
   const isSlabs = structureType === STRUCTURE_TYPE.SLABS;
   const isCommercialContracts = isCommercialContractsIncomeType([], incomeTypeId, incomeTypeName);
   const selectedFrequencies = commercials.selectedFrequencies || [];
+  const financialYearStartMonth = resolveFinancialYearStartMonth(commercials);
 
   const [slabs, setSlabs] = useState([]);
   const [loadingSlabs, setLoadingSlabs] = useState(false);
@@ -665,6 +667,7 @@ export default function HybridCommercialFields({
               tableTitle: 'Target Tiers',
             })}
             fieldError={fieldErrors.slabs}
+            financialYearStartMonth={financialYearStartMonth}
           />
         ) : (
           <WizardFieldAnchor field="slabs" error={fieldErrors.slabs}>

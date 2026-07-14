@@ -57,7 +57,12 @@ export default function PriceOffDetailDrawer({
     .sort(([left], [right]) => left.localeCompare(right));
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: { xs: '100%', sm: 600 } } }}>
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      slotProps={{ paper: { sx: { width: { xs: '100%', sm: 600 } } } }}
+    >
       <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box>
           <Typography variant="h6">Campaign Preview</Typography>

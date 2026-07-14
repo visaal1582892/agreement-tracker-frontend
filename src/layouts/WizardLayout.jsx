@@ -1,4 +1,4 @@
-import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha, IconButton } from '@mui/material';
+import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha, IconButton, Tooltip } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import { BRAND } from '../config/theme';
 
@@ -33,6 +33,8 @@ export default function WizardLayout({
   onNext,
   onSaveAndClose,
   onSaveAndCreateAnother,
+  saveAndCreateAnotherDisabled = false,
+  saveAndCreateAnotherDisabledReason = '',
   onFinishAndExit,
   onDetailsNext,
   onCommercialsNext,
@@ -309,22 +311,29 @@ export default function WizardLayout({
             {footerMode === 'review' && (
               <>
                 {onSaveAndCreateAnother && (
-                  <Button
-                    variant="outlined"
-                    onClick={onSaveAndCreateAnother}
-                    disabled={busy}
-                    sx={{
-                      borderRadius: 2.5,
-                      px: 2.5,
-                      minWidth: 190,
-                      fontWeight: 600,
-                      borderColor: '#E2E8F0',
-                      color: '#334155',
-                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
-                    }}
+                  <Tooltip
+                    title={saveAndCreateAnotherDisabled ? saveAndCreateAnotherDisabledReason : ''}
+                    disableHoverListener={!saveAndCreateAnotherDisabled}
                   >
-                    {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
-                  </Button>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        onClick={onSaveAndCreateAnother}
+                        disabled={busy || saveAndCreateAnotherDisabled}
+                        sx={{
+                          borderRadius: 2.5,
+                          px: 2.5,
+                          minWidth: 190,
+                          fontWeight: 600,
+                          borderColor: '#E2E8F0',
+                          color: '#334155',
+                          '&:hover': { borderColor: '#CBD5E1', bgcolor: '#fff' },
+                        }}
+                      >
+                        {isSavingLoop ? 'Saving…' : 'Save & Create Another'}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
                 <Button
                   variant="contained"

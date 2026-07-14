@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { Download, UploadFile } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
+import { formatTimePeriodDisplay } from '../../../utils/timePeriodDisplayUtils';
 import { alpha } from '@mui/material/styles';
 import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
@@ -63,6 +64,7 @@ export default function CommercialContactsCutoffSection({
   onFrequenciesChange,
   tierBuilder = null,
   fieldError = null,
+  financialYearStartMonth = 4,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const fileInputRef = useRef(null);
@@ -268,7 +270,12 @@ export default function CommercialContactsCutoffSection({
                 <TableBody>
                   {(stagedMatrix.matrixRows ?? []).map((row, rowIndex) => (
                     <TableRow key={`${row.timePeriodId ?? row.timePeriodName}-${rowIndex}`}>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.timePeriodName}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {formatTimePeriodDisplay(row.timePeriodName, financialYearStartMonth, {
+                          calendarMonth: row.monthNumber,
+                          calendarYear: row.periodYear,
+                        })}
+                      </TableCell>
                       {slabHeaders.flatMap((header) => {
                         const tier = row.tierCutoffs?.[String(header.slabId)] ?? {};
                         return [

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   AppBar, Box, List, ListItem,
@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   { label: 'Price Offs', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS, rights: [RIGHTS.PRICE_OFF_MANAGE] },
   { label: 'Price Off Approvals', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS_APPROVALS, rights: [RIGHTS.PRICE_OFF_APPROVE] },
   { label: 'Users', icon: ManageAccountsOutlined, path: ROUTES.ADMIN_USERS, rights: [RIGHTS.ADMIN_USERS] },
-  { label: 'Master Data', icon: StorageOutlined, path: ROUTES.MASTER, rights: [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE] },
+  { label: 'Master Data', icon: StorageOutlined, path: ROUTES.MASTER, masterAccess: true },
 ];
 
 function NavIcon({ Icon, active, badge, collapsed }) {
@@ -84,10 +84,12 @@ function NavIcon({ Icon, active, badge, collapsed }) {
 export default function DashboardLayout() {
   const [hovered, setHovered] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
+  const pendingMenuActionRef = useRef(null);
+  const profileTriggerRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
-  const { user, hasAnyRight } = useAuth();
+  const { user, hasAnyRight, hasRole, hasRight } = useAuth();
 
   const sidebarWidth = hovered ? DRAWER_WIDTH : DRAWER_COLLAPSED;
 
@@ -96,7 +98,34 @@ export default function DashboardLayout() {
     navigate(ROUTES.LOGIN);
   };
 
-  const filteredNav = NAV_ITEMS.filter((item) => hasAnyRight(item.rights));
+  const closeProfileMenu = (action) => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    profileTriggerRef.current?.focus();
+    pendingMenuActionRef.current = action ?? null;
+    setAnchorEl(null);
+  };
+
+  const handleProfileMenuClose = (_event, reason) => {
+    if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+      pendingMenuActionRef.current = null;
+    }
+    setAnchorEl(null);
+  };
+
+  const handleProfileMenuExited = () => {
+    const action = pendingMenuActionRef.current;
+    pendingMenuActionRef.current = null;
+    action?.();
+  };
+
+  const canAccessMaster = hasRole('ADMIN') || hasRight(RIGHTS.MASTER_MANAGE);
+
+  const filteredNav = NAV_ITEMS.filter((item) => {
+    if (item.masterAccess) return canAccessMaster;
+    return hasAnyRight(item.rights);
+  });
 
   const isActive = (path, placeholder) => {
     if (placeholder) return false;
@@ -159,6 +188,8 @@ export default function DashboardLayout() {
             <Divider orientation="vertical" flexItem sx={{ height: 32, alignSelf: 'center', borderColor: '#E2E8F0' }} />
 
             <Box
+              ref={profileTriggerRef}
+              tabIndex={-1}
               onClick={(e) => setAnchorEl(e.currentTarget)}
               sx={{
                 display: 'flex', alignItems: 'center', gap: 1.25,
@@ -187,11 +218,24 @@ export default function DashboardLayout() {
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
-        onClose={() => setAnchorEl(null)}
+        onClose={handleProfileMenuClose}
+        disableAutoFocusItem
+        disableEnforceFocus
+        disableRestoreFocus
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        PaperProps={{
-          sx: { mt: 1, minWidth: 210, borderRadius: 2, border: `1px solid ${BRAND.borderLight}`, boxShadow: BRAND.shadowMd },
+        slotProps={{
+          transition: { onExited: handleProfileMenuExited },
+          list: { autoFocusItem: false },
+          paper: {
+            sx: {
+              mt: 1,
+              minWidth: 210,
+              borderRadius: 2,
+              border: `1px solid ${BRAND.borderLight}`,
+              boxShadow: BRAND.shadowMd,
+            },
+          },
         }}
       >
         <Box sx={{ px: 2, py: 1.5 }}>
@@ -199,11 +243,19 @@ export default function DashboardLayout() {
           <Typography variant="caption" color="text.secondary">{user?.email}</Typography>
         </Box>
         <Divider />
-        <MenuItem onClick={() => { setAnchorEl(null); navigate('/profile'); }} sx={{ gap: 1.5, py: 1.2 }}>
+        <MenuItem
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => closeProfileMenu(() => navigate(ROUTES.PROFILE))}
+          sx={{ gap: 1.5, py: 1.2 }}
+        >
           <Person fontSize="small" sx={{ color: 'text.secondary' }} />
           <Typography variant="body2">Profile</Typography>
         </MenuItem>
-        <MenuItem onClick={handleLogout} sx={{ gap: 1.5, py: 1.2, color: 'error.main' }}>
+        <MenuItem
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => closeProfileMenu(handleLogout)}
+          sx={{ gap: 1.5, py: 1.2, color: 'error.main' }}
+        >
           <Logout fontSize="small" />
           <Typography variant="body2">Sign out</Typography>
         </MenuItem>
@@ -228,7 +280,8 @@ export default function DashboardLayout() {
             overflowY: 'hidden',
             transition: 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s ease',
             boxShadow: hovered ? '4px 0 24px rgba(0,0,0,0.06)' : 'none',
-            zIndex: 10,
+            position: 'relative',
+            zIndex: hovered ? 30 : 20,
           }}
         >
           <List sx={{ px: hovered ? 1.25 : 0.75, py: 2, flex: 1 }}>
@@ -292,6 +345,7 @@ export default function DashboardLayout() {
 
         <Box
           component="main"
+          id="dashboard-main-content"
           sx={{
             flex: 1,
             minHeight: 0,

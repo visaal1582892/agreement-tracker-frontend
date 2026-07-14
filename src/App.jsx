@@ -8,7 +8,7 @@ import store from './store';
 import theme from './config/theme';
 import { ROUTES } from './config/routes';
 import { RIGHTS } from './config/rights';
-import { ProtectedRoute, RightRoute } from './utils/ProtectedRoute';
+import { ProtectedRoute, RightRoute, RoleRoute } from './utils/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
@@ -22,12 +22,14 @@ import ApprovalsPage from './pages/approvals/ApprovalsPage';
 import PriceOffsDashboard from './pages/price-offs/PriceOffsDashboard';
 import PriceOffsApprovalHub from './pages/price-offs/PriceOffsApprovalHub';
 import UserManagementPage from './pages/admin/UserManagementPage';
+import ProfilePage from './pages/profile/ProfilePage';
 import MasterDataLayout from './pages/master/MasterDataLayout';
 import AgreementGroupMasterPage from './pages/master/AgreementGroupMasterPage';
 import IncomeTypePage from './pages/master/IncomeTypePage';
 import AgreementTypePage from './pages/master/AgreementTypePage';
-import StateMasterPage from './pages/master/StateMasterPage';
 import PriceOffLocationMasterPage from './pages/master/PriceOffLocationMasterPage';
+import UsersMasterPage from './pages/master/UsersMasterPage';
+import RoleRightsMasterPage from './pages/master/RoleRightsMasterPage';
 import RolePage from './pages/master/RolePage';
 import RightPage from './pages/master/RightPage';
 
@@ -47,6 +49,8 @@ export default function App() {
 
                 <Route element={<ProtectedRoute />}>
                   <Route element={<DashboardLayout />}>
+                    <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
+
                     <Route element={<RightRoute rights={[RIGHTS.DASHBOARD_VIEW]} />}>
                       <Route index element={<DashboardPage />} />
                     </Route>
@@ -86,14 +90,15 @@ export default function App() {
                       <Route path={ROUTES.ADMIN_USERS} element={<UserManagementPage />} />
                     </Route>
 
-                    <Route element={<RightRoute rights={[RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE]} />}>
+                    <Route element={<RoleRoute roles={['ADMIN']} />}>
                       <Route path={ROUTES.MASTER} element={<MasterDataLayout />}>
                         <Route index element={<Navigate to={ROUTES.MASTER_AGREEMENT_GROUPS} replace />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_GROUPS} element={<AgreementGroupMasterPage />} />
                         <Route path={ROUTES.MASTER_INCOME_TYPES} element={<IncomeTypePage />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_TYPES} element={<AgreementTypePage />} />
-                        <Route path={ROUTES.MASTER_STATES} element={<StateMasterPage />} />
                         <Route path={ROUTES.MASTER_PRICE_OFF_LOCATIONS} element={<PriceOffLocationMasterPage />} />
+                        <Route path={ROUTES.MASTER_USERS} element={<UsersMasterPage />} />
+                        <Route path={ROUTES.MASTER_ROLE_RIGHTS} element={<RoleRightsMasterPage />} />
                         <Route path={ROUTES.MASTER_ROLES} element={<RolePage />} />
                         <Route path={ROUTES.MASTER_RIGHTS} element={<RightPage />} />
                       </Route>

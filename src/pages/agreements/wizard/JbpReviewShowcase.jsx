@@ -4,7 +4,10 @@ import { useSnackbar } from 'notistack';
 import { extractApiErrorMessage, fetchJbpStructure } from '../../../api/jbpApi';
 import JbpMatrixReviewTable from './JbpMatrixReviewTable';
 
-export default function JbpReviewShowcase({ agreementVersionId }) {
+export default function JbpReviewShowcase({
+  agreementVersionId,
+  financialYearStartMonth = 4,
+}) {
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [stagedWorkbook, setStagedWorkbook] = useState(null);
@@ -67,6 +70,7 @@ export default function JbpReviewShowcase({ agreementVersionId }) {
     <JbpMatrixReviewTable
       stagedWorkbook={stagedWorkbook}
       title={null}
+      financialYearStartMonth={financialYearStartMonth}
     />
   );
 }

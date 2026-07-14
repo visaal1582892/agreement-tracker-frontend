@@ -19,6 +19,26 @@ import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 const MANUFACTURER_DROPDOWN_LIMIT = 50;
 const EMPTY_RULES = { manufacturers: [], divisionRules: [], productRules: [] };
 
+function serializeProductRulesPatch(patch) {
+  return JSON.stringify({
+    manufacturers: patch.manufacturers ?? [],
+    manufacturerOptions: (patch.manufacturerOptions ?? []).map((manufacturer) => ({
+      id: manufacturer.id,
+      manufacturerName: manufacturer.manufacturerName ?? '',
+    })),
+    divisionRules: (patch.divisionRules ?? []).map((rule) => ({
+      id: rule.id,
+      ruleType: rule.ruleType,
+      name: rule.name ?? '',
+    })),
+    productRules: (patch.productRules ?? []).map((rule) => ({
+      id: rule.id,
+      ruleType: rule.ruleType,
+      name: rule.name ?? '',
+    })),
+  });
+}
+
 const columnPaperSx = {
   flex: 1,
   minWidth: 0,
@@ -71,14 +91,14 @@ function ScrollableCheckboxList({
                     checked={selectedIds.some((selectedId) => toNumericId(selectedId) === toNumericId(id))}
                     tabIndex={-1}
                     disableRipple
-                    inputProps={{ 'aria-labelledby': labelId }}
+                    slotProps={{ input: { 'aria-labelledby': labelId } }}
                     size="small"
                   />
                 </ListItemIcon>
                 <ListItemText
                   id={labelId}
                   primary={getItemLabel(item)}
-                  primaryTypographyProps={{ variant: 'body2' }}
+                  slotProps={{ primary: { variant: 'body2' } }}
                 />
               </ListItemButton>
             </ListItem>
@@ -228,6 +248,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
 
   const hasInitialized = useRef(false);
   const emitReadyRef = useRef(false);
+  const lastEmittedProductRulesRef = useRef(null);
   const suppressScopeResetRef = useRef(false);
   const pendingDivisionIdsRef = useRef(null);
   const pendingProductRuleIdsRef = useRef(null);
@@ -442,18 +463,26 @@ export default function Step2Products({ state, updateProductRules, info, error }
         setDivisionListItems(normalized);
         setDivisionTotalCount(totalElements);
         setSelectedDivisionMeta((prev) => {
+          let changed = false;
           const next = new Map(prev);
           normalized.forEach((division) => {
             const id = toNumericId(division.id);
-            if (next.has(id)) {
-              next.set(id, {
-                ...next.get(id),
-                divisionName: division.divisionName,
-                manufacturerId: division.manufacturerId,
-              });
+            if (!next.has(id)) return;
+            const existing = next.get(id);
+            if (
+              existing.divisionName === division.divisionName
+              && toNumericId(existing.manufacturerId) === toNumericId(division.manufacturerId)
+            ) {
+              return;
             }
+            next.set(id, {
+              ...existing,
+              divisionName: division.divisionName,
+              manufacturerId: division.manufacturerId,
+            });
+            changed = true;
           });
-          return next;
+          return changed ? next : prev;
         });
       })
       .catch((err) => {
@@ -611,6 +640,12 @@ export default function Step2Products({ state, updateProductRules, info, error }
 
     hasInitialized.current = true;
     emitReadyRef.current = true;
+    lastEmittedProductRulesRef.current = serializeProductRulesPatch({
+      manufacturers: state.productRules?.manufacturers ?? [],
+      manufacturerOptions: state.productRules?.manufacturerOptions ?? [],
+      divisionRules: state.productRules?.divisionRules ?? [],
+      productRules: state.productRules?.productRules ?? [],
+    });
   }, [state.productRules]);
 
   useEffect(() => {
@@ -623,7 +658,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
       return;
     }
 
-    updateProductRules({
+    const patch = {
       manufacturers: selectedManufacturerIds,
       manufacturerOptions: selectedManufacturers.map((manufacturer) => ({
         id: manufacturer.id,
@@ -631,7 +666,13 @@ export default function Step2Products({ state, updateProductRules, info, error }
       })),
       divisionRules: explicitDivisionRules,
       productRules: explicitProductRules,
-    });
+    };
+    const serialized = serializeProductRulesPatch(patch);
+    if (lastEmittedProductRulesRef.current === serialized) {
+      return;
+    }
+    lastEmittedProductRulesRef.current = serialized;
+    updateProductRules(patch);
   }, [
     selectedManufacturerIds,
     selectedManufacturers,
@@ -641,7 +682,6 @@ export default function Step2Products({ state, updateProductRules, info, error }
     explicitDivisionRules,
     explicitProductRules,
     updateProductRules,
-    state.productRules?.divisionRules,
   ]);
 
   const renderManufacturerOption = useCallback((option) => (

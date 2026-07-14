@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, FormControl, Grid, InputBase, InputLabel, Typography } from '@mui/material';
+import { Box, Grid, InputBase, Typography } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -261,20 +261,26 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
       </Grid>
 
       <Grid size={{ xs: 12, md: 4 }}>
-        <FormControl fullWidth size="small" variant="outlined">
-          <InputLabel
-            shrink
+        <Box>
+          <Typography
+            component="label"
+            variant="caption"
             sx={{
+              display: 'block',
+              mb: 0.75,
               px: 0.5,
-              bgcolor: BRAND.white,
               color: BRAND.textSecondary,
               fontWeight: 600,
               fontSize: '0.75rem',
             }}
           >
             Tenure
-          </InputLabel>
-          <Box sx={unifiedTenureWrapperSx}>
+          </Typography>
+          <Box
+            role="group"
+            aria-label="Tenure"
+            sx={unifiedTenureWrapperSx}
+          >
             {TENURE_SEGMENTS.map(({ key, label }) => (
               <Box key={key} sx={tenureSegmentSx}>
                 <InputBase
@@ -300,7 +306,7 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
               </Box>
             ))}
           </Box>
-        </FormControl>
+        </Box>
       </Grid>
 
       <Grid size={{ xs: 12, md: 4 }}>

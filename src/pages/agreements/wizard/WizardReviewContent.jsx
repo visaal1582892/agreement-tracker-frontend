@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Chip, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from '@mui/material';
+import { Box, Typography, Chip, Alert } from '@mui/material';
 import dayjs from 'dayjs';
 import { useSnackbar } from 'notistack';
 import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
 import { formatTenureFromDates } from '../../../components/forms/DateRangeFields';
-import { fetchContactsCutoffs, fetchSlabs } from '../../../api/commercialApi';
+import { fetchSlabs } from '../../../api/commercialApi';
 import { fetchStoreMappings } from '../../../api/storeMappingApi';
 import StoreMappingReviewSummary from './StoreMappingReviewSummary';
 import CommercialsUploadModal from './CommercialsUploadModal';
@@ -19,6 +19,8 @@ import {
 } from '../../../constants/commercialStructure';
 import { LEAD_TIME_BASIS, LEAD_TIME_BASIS_OPTIONS } from '../../../constants/leadTimeBasis';
 import ScopeOperationsReview from '../../../components/review/ScopeOperationsReview';
+import DocumentFileLink from '../../../components/upload/DocumentFileLink';
+import { resolveAgreementFinancialYearStartMonth } from '../../../utils/jbpMatrixUtils';
 
 const REVIEW_SECTION_SX = {
   mb: 0,
@@ -155,6 +157,17 @@ function SettlementLeadTimeRows({ details, version }) {
   return null;
 }
 
+function resolveReviewDocuments(details = {}, version) {
+  if (details.documents?.length) {
+    return details.documents;
+  }
+  return (version?.documents ?? []).map((doc) => ({
+    fileName: doc.originalFileName,
+    fileUrl: doc.fileUrl,
+    documentType: doc.documentType,
+  }));
+}
+
 export default function WizardReviewContent({
   wizardState,
   version,
@@ -164,15 +177,15 @@ export default function WizardReviewContent({
   const { enqueueSnackbar } = useSnackbar();
   const [slabs, setSlabs] = useState(initialSlabs ?? []);
   const [loadingSlabs, setLoadingSlabs] = useState(false);
-  const [cutoffRows, setCutoffRows] = useState([]);
-  const [loadingCutoffs, setLoadingCutoffs] = useState(false);
   const [storeMappings, setStoreMappings] = useState(version?.storeMappings ?? []);
   const [loadingStores, setLoadingStores] = useState(false);
 
   const details = wizardState?.agreement?.details ?? {};
+  const reviewDocuments = resolveReviewDocuments(details, version);
   const asset = wizardState?.agreement?.asset ?? {};
   const versionAsset = version?.asset ?? {};
   const commercials = wizardState?.agreement?.commercials ?? {};
+  const financialYearStartMonth = resolveAgreementFinancialYearStartMonth({ commercials, version });
   const productRules = wizardState?.productRules ?? {};
   const incomeTypeName = version?.incomeTypeName ?? details.incomeTypeName;
   const profile = resolveIncomeProfile(incomeTypeName);
@@ -181,6 +194,10 @@ export default function WizardReviewContent({
   const enableSlab = commercials.enableSlabIncentives ?? hybridFlags.enableSlabIncentives;
   const isQps = profile === 'AD_HOC';
   const locationLabel = (() => {
+    const geographyMode = version?.geographyMode ?? details.geographyMode;
+    if (geographyMode === 'ALL') {
+      return 'All locations';
+    }
     const states = version?.partnerStates ?? details.partnerStates ?? [];
     const cities = version?.partnerCities ?? details.partnerCities ?? [];
     const stateParts = (states ?? [])
@@ -210,7 +227,6 @@ export default function WizardReviewContent({
   const isCommercialContracts = profile === 'COMMERCIAL_CONTRACTS';
   const showSlabSection = profile !== 'ASSET_RENTAL' && enableSlab && !isCommercialContracts && (loadingSlabs || slabs.length > 0);
   const showCommercialJbpSection = isCommercialContracts && enableSlab;
-  const showCommercialCutoffsSection = isCommercialContracts && enableSlab;
 
   useEffect(() => {
     if (!serverAgreementId || !enableSlab) {
@@ -239,29 +255,6 @@ export default function WizardReviewContent({
     load();
     return () => { cancelled = true; };
   }, [serverAgreementId, enableSlab, initialSlabs, enqueueSnackbar]);
-
-  useEffect(() => {
-    if (!isCommercialContracts || !enableSlab) {
-      setCutoffRows([]);
-      return;
-    }
-    const versionId = serverAgreementId ?? version?.id;
-    if (!versionId) return;
-    let cancelled = false;
-    const load = async () => {
-      setLoadingCutoffs(true);
-      try {
-        const data = await fetchContactsCutoffs(versionId);
-        if (!cancelled) setCutoffRows(Array.isArray(data?.rows) ? data.rows : []);
-      } catch {
-        if (!cancelled) setCutoffRows([]);
-      } finally {
-        if (!cancelled) setLoadingCutoffs(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, [isCommercialContracts, enableSlab, serverAgreementId, version?.id]);
 
   useEffect(() => {
     if (profile !== 'ASSET_RENTAL') {
@@ -401,11 +394,14 @@ export default function WizardReviewContent({
         )}
 
         <CollapsibleSection title="Supporting Documents" defaultExpanded sx={REVIEW_SECTION_SX}>
-          {details.documents?.length ? (
-            details.documents.map((doc, i) => (
-              <Box key={`${doc.fileName}-${i}`} sx={{ display: 'flex', gap: 1, mb: 0.5 }}>
+          {reviewDocuments.length ? (
+            reviewDocuments.map((doc, i) => (
+              <Box key={`${doc.fileName}-${doc.fileUrl || i}`} sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
                 <Chip label={doc.documentType} size="small" variant="outlined" />
-                <Typography variant="body2">{doc.fileName}</Typography>
+                <DocumentFileLink
+                  fileUrl={doc.fileUrl}
+                  fileName={doc.fileName || doc.originalFilename || doc.originalFileName}
+                />
               </Box>
             ))
           ) : (
@@ -455,46 +451,10 @@ export default function WizardReviewContent({
 
         {showCommercialJbpSection && (
           <CollapsibleSection title="JBP Relational Matrix" defaultExpanded sx={REVIEW_SECTION_SX}>
-            <JbpReviewShowcase agreementVersionId={serverAgreementId ?? version?.id} />
-          </CollapsibleSection>
-        )}
-
-        {showCommercialCutoffsSection && (
-          <CollapsibleSection
-            title="Temporal Relaxations (Cutoffs)"
-            defaultExpanded
-            sx={REVIEW_SECTION_SX}
-          >
-            {loadingCutoffs ? (
-              <Typography variant="body2" color="text.secondary">Loading cutoff matrix…</Typography>
-            ) : cutoffRows.length > 0 ? (
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>Time Period</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Slab Tier</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Lower Cut-off (%)</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Upper Cut-off (%)</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {cutoffRows.map((row) => (
-                      <TableRow key={`${row.timePeriodId}-${row.slabId}`}>
-                        <TableCell>{row.timePeriodName}</TableCell>
-                        <TableCell>{row.slabTierLabel}</TableCell>
-                        <TableCell>{row.lowerCutoff != null ? `${row.lowerCutoff}%` : '—'}</TableCell>
-                        <TableCell>{row.upperCutoff != null ? `${row.upperCutoff}%` : '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                No temporal cutoff configuration uploaded yet.
-              </Typography>
-            )}
+            <JbpReviewShowcase
+              agreementVersionId={serverAgreementId ?? version?.id}
+              financialYearStartMonth={financialYearStartMonth}
+            />
           </CollapsibleSection>
         )}
 
@@ -516,6 +476,7 @@ export default function WizardReviewContent({
                   slabs={slabs}
                   startDate={details.startDate ?? version?.startDate}
                   expiryDate={details.expiryDate ?? version?.expiryDate}
+                  financialYearStartMonth={financialYearStartMonth}
                 />
               </Box>
             )}

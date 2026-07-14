@@ -1,6 +1,7 @@
 import { resolveStructureType, resolveFlatBaselineFrequency, PAYOUT_FREQUENCY } from '../constants/commercialStructure';
-import { isAdHocIncomeType, isAssetRentalIncomeType, isCommercialContractsIncomeType } from './incomeTypeUtils';
+import { isAdHocIncomeType, isAssetRentalIncomeType, isCommercialContractsIncomeType, isDataFeeIncomeType } from './incomeTypeUtils';
 import { ADHOC_SUB_TYPES } from '../constants/adhocSubTypes';
+import { GEOGRAPHY_MODE } from '../constants/geographyMode';
 
 const BLANK_ASSET = {
   assetCategory: 'PHYSICAL_ASSET',
@@ -16,6 +17,7 @@ const BLANK_ASSET = {
 export function resolveIncomeTypeProfile(incomeTypes, incomeTypeId, incomeTypeName = null) {
   if (isAssetRentalIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'ASSET_RENTAL';
   if (isCommercialContractsIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'COMMERCIAL_CONTRACTS';
+  if (isDataFeeIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'DATA_FEE';
   if (isAdHocIncomeType(incomeTypes, incomeTypeId, incomeTypeName)) return 'AD_HOC';
   return 'STANDARD';
 }
@@ -56,7 +58,9 @@ export function buildIncomeTypeSwitchUpdates(incomeTypes, previousDetails, nextD
     updates.clearProductRules = true;
   }
   if (prevProfile !== nextProfile) {
-    updates.details.geographyMode = 'MIXED';
+    updates.details.geographyMode = nextProfile === 'DATA_FEE'
+      ? GEOGRAPHY_MODE.ALL
+      : GEOGRAPHY_MODE.MIXED;
     updates.details.partnerStates = [];
     updates.details.partnerCities = [];
   }

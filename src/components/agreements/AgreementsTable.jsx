@@ -138,6 +138,8 @@ function RowActionsMenu({
         anchorEl={anchor}
         open={Boolean(anchor)}
         onClose={handleClose}
+        disableAutoFocusItem
+        disableEnforceFocus
         onClick={(e) => e.stopPropagation()}
         slotProps={{
           backdrop: {

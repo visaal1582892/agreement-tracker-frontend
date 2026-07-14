@@ -96,7 +96,7 @@ export default function Step1GroupSetup({ state, updateFields, groupFieldsLocked
       )}
 
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid size={{ xs: 12, md: 6 }} sx={{ overflow: 'visible' }}>
           <SearchableSelect
             label="Agreement Group"
             placeholder="Search existing groups…"

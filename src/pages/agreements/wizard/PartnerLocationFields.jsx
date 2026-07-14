@@ -1,9 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Box, Chip, Grid, Stack, Typography, alpha } from '@mui/material';
+import {
+  Box, Chip, Grid, Stack, Typography, alpha, Alert,
+  FormControl, FormLabel, RadioGroup, FormControlLabel, Radio,
+} from '@mui/material';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 import { integrationApi } from '../../../api/integrationApi';
 import { BRAND } from '../../../config/theme';
+import { GEOGRAPHY_MODE } from '../../../constants/geographyMode';
 
 const SEARCH_MIN_CHARS = 2;
 
@@ -54,6 +58,7 @@ export default function PartnerLocationFields({
   onUpdateDetails,
   fieldErrors = {},
   onClearFieldError,
+  allowAllLocations = false,
 }) {
   const [stateOptions, setStateOptions] = useState([]);
   const [cityParentOptions, setCityParentOptions] = useState([]);
@@ -66,6 +71,9 @@ export default function PartnerLocationFields({
   const [citySearchError, setCitySearchError] = useState('');
   const [cityBrowseState, setCityBrowseState] = useState(null);
 
+  const isAllLocations = details.geographyMode === GEOGRAPHY_MODE.ALL;
+  const selectionMode = isAllLocations ? GEOGRAPHY_MODE.ALL : 'CUSTOM';
+
   const selectedStates = useMemo(() => toOptions(details.partnerStates), [details.partnerStates]);
   const selectedCities = useMemo(() => toOptions(details.partnerCities), [details.partnerCities]);
 
@@ -76,16 +84,34 @@ export default function PartnerLocationFields({
 
   const persist = useCallback((states, cities) => {
     onUpdateDetails({
-      geographyMode: 'MIXED',
+      geographyMode: GEOGRAPHY_MODE.MIXED,
       partnerStates: toStatePayload(states),
       partnerCities: toCityPayload(cities),
     });
   }, [onUpdateDetails]);
 
+  const handleSelectionModeChange = useCallback((event) => {
+    const nextMode = event.target.value;
+    if (nextMode === GEOGRAPHY_MODE.ALL) {
+      onUpdateDetails({
+        geographyMode: GEOGRAPHY_MODE.ALL,
+        partnerStates: [],
+        partnerCities: [],
+      });
+      onClearFieldError?.('partnerState');
+      onClearFieldError?.('partnerCity');
+      return;
+    }
+    onUpdateDetails({
+      geographyMode: GEOGRAPHY_MODE.MIXED,
+      partnerStates: [],
+      partnerCities: [],
+    });
+  }, [onUpdateDetails, onClearFieldError]);
+
   const handleStatesChange = useCallback((options) => {
     const nextStates = Array.isArray(options) ? options : [];
     const nextStateCodes = new Set(nextStates.map((s) => s.code));
-    // Selecting whole state removes that state's cities
     const nextCities = selectedCities.filter((city) => !nextStateCodes.has(city.stateCode));
     persist(nextStates, nextCities);
     onClearFieldError?.('partnerState');
@@ -107,7 +133,6 @@ export default function PartnerLocationFields({
       id: `${cityBrowseState.code}:${city.code}`,
       label: `${city.name} (${city.code}) · ${cityBrowseState.name}`,
     }));
-    // Selecting cities of a state removes that whole-state selection
     const nextStates = selectedStates.filter((state) => state.code !== cityBrowseState.code);
     const otherCities = selectedCities.filter((city) => city.stateCode !== cityBrowseState.code);
     persist(nextStates, [...otherCities, ...nextForState]);
@@ -214,109 +239,139 @@ export default function PartnerLocationFields({
 
   return (
     <Box>
-      <Typography variant="body2" sx={{ mb: 1.5, color: BRAND.textSecondary }}>
-        Select whole states and/or cities from other states. Selecting cities for a state removes that whole-state selection.
-      </Typography>
-
-      {hasSelection && (
-        <Box
-          sx={{
-            mb: 2,
-            p: 1.5,
-            borderRadius: '8px',
-            border: `1px solid ${BRAND.borderLight}`,
-            bgcolor: alpha(BRAND.bgGray, 0.5),
-          }}
-        >
-          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Selected locations
-          </Typography>
-          <Stack direction="row" flexWrap="wrap" gap={0.75}>
-            {selectedStates.map((state) => (
-              <Chip
-                key={`state-${state.code}`}
-                size="small"
-                label={`State: ${state.name} (${state.code})`}
-                onDelete={() => removeStateChip(state.code)}
-                sx={{ bgcolor: alpha(BRAND.red, 0.08) }}
+      {allowAllLocations && (
+        <WizardFieldAnchor field="geographyMode" error={fieldErrors.geographyMode}>
+          <FormControl component="fieldset" sx={{ mb: 2 }}>
+            <FormLabel component="legend" sx={{ mb: 1, color: BRAND.textSecondary, fontSize: '0.875rem' }}>
+              Location coverage
+            </FormLabel>
+            <RadioGroup row value={selectionMode} onChange={handleSelectionModeChange}>
+              <FormControlLabel
+                value={GEOGRAPHY_MODE.ALL}
+                control={<Radio size="small" />}
+                label="All locations"
               />
-            ))}
-            {selectedCities.map((city) => (
-              <Chip
-                key={`city-${city.stateCode}-${city.code}`}
-                size="small"
-                label={`City: ${city.name} (${city.code}) · ${city.stateName || city.stateCode}`}
-                onDelete={() => removeCityChip(city)}
-                sx={{ bgcolor: alpha('#0F766E', 0.1) }}
+              <FormControlLabel
+                value="CUSTOM"
+                control={<Radio size="small" />}
+                label="Custom selection"
               />
-            ))}
-          </Stack>
-        </Box>
+            </RadioGroup>
+          </FormControl>
+        </WizardFieldAnchor>
       )}
 
-      <Grid container spacing={2}>
-        <Grid size={12}>
-          <WizardFieldAnchor field="partnerState" error={fieldErrors.partnerState}>
-            <SearchableSelect
-              isMulti
-              label="Whole States"
-              placeholder="Search states to select entirely (min 2 chars)"
-              options={stateOptions}
-              value={selectedStates}
-              onChange={handleStatesChange}
-              onSearch={handleStateSearch}
-              getOptionLabel={locationLabel}
-              isOptionEqualToValue={(a, b) => a?.code === b?.code}
-              loading={stateLoading}
-              error={fieldErrors.partnerState || stateSearchError}
-              helperText={stateSearchError || 'Selecting a state clears any cities already chosen for that state'}
-              noOptionsText={stateLoading ? 'Searching…' : 'No states found'}
-            />
-          </WizardFieldAnchor>
-        </Grid>
+      {allowAllLocations && isAllLocations ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          All locations are selected for this Data Fee agreement. Switch to custom selection to limit geography.
+        </Alert>
+      ) : (
+        <>
+          <Typography variant="body2" sx={{ mb: 1.5, color: BRAND.textSecondary }}>
+            Select whole states and/or cities from other states. Selecting cities for a state removes that whole-state selection.
+          </Typography>
 
-        <Grid size={{ xs: 12, md: 5 }}>
-          <SearchableSelect
-            label="City search — State"
-            placeholder="Pick state to browse cities"
-            options={cityParentOptions}
-            value={cityBrowseState}
-            onChange={handleCityBrowseStateChange}
-            onSearch={handleCityParentSearch}
-            getOptionLabel={locationLabel}
-            isOptionEqualToValue={(a, b) => a?.code === b?.code}
-            loading={cityParentLoading}
-            error={cityParentSearchError}
-            helperText={cityParentSearchError || 'Temporary browse context — not a whole-state selection'}
-            noOptionsText={cityParentLoading ? 'Searching…' : 'No states found'}
-          />
-        </Grid>
+          {hasSelection && (
+            <Box
+              sx={{
+                mb: 2,
+                p: 1.5,
+                borderRadius: '8px',
+                border: `1px solid ${BRAND.borderLight}`,
+                bgcolor: alpha(BRAND.bgGray, 0.5),
+              }}
+            >
+              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Selected locations
+              </Typography>
+              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
+                {selectedStates.map((state) => (
+                  <Chip
+                    key={`state-${state.code}`}
+                    size="small"
+                    label={`State: ${state.name} (${state.code})`}
+                    onDelete={() => removeStateChip(state.code)}
+                    sx={{ bgcolor: alpha(BRAND.red, 0.08) }}
+                  />
+                ))}
+                {selectedCities.map((city) => (
+                  <Chip
+                    key={`city-${city.stateCode}-${city.code}`}
+                    size="small"
+                    label={`City: ${city.name} (${city.code}) · ${city.stateName || city.stateCode}`}
+                    onDelete={() => removeCityChip(city)}
+                    sx={{ bgcolor: alpha('#0F766E', 0.1) }}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          )}
 
-        <Grid size={{ xs: 12, md: 7 }}>
-          <WizardFieldAnchor field="partnerCity" error={fieldErrors.partnerCity}>
-            <SearchableSelect
-              isMulti
-              label="Cities"
-              placeholder={cityBrowseState ? 'Search cities (min 2 chars)' : 'Pick a state first'}
-              options={cityOptions}
-              value={citiesForBrowseState}
-              onChange={handleCitiesChange}
-              onSearch={handleCitySearch}
-              getOptionLabel={locationLabel}
-              isOptionEqualToValue={(a, b) => a?.code === b?.code && a?.stateCode === b?.stateCode}
-              loading={cityLoading}
-              disabled={!cityBrowseState}
-              error={fieldErrors.partnerCity || citySearchError}
-              helperText={
-                !cityBrowseState
-                  ? 'Select a state above to search its cities'
-                  : (citySearchError || 'Selecting cities removes that state from Whole States')
-              }
-              noOptionsText={cityLoading ? 'Searching…' : 'No cities found'}
-            />
-          </WizardFieldAnchor>
-        </Grid>
-      </Grid>
+          <Grid container spacing={2}>
+            <Grid size={12}>
+              <WizardFieldAnchor field="partnerState" error={fieldErrors.partnerState}>
+                <SearchableSelect
+                  isMulti
+                  label="Whole States"
+                  placeholder="Search states to select entirely (min 2 chars)"
+                  options={stateOptions}
+                  value={selectedStates}
+                  onChange={handleStatesChange}
+                  onSearch={handleStateSearch}
+                  getOptionLabel={locationLabel}
+                  isOptionEqualToValue={(a, b) => a?.code === b?.code}
+                  loading={stateLoading}
+                  error={fieldErrors.partnerState || stateSearchError}
+                  helperText={stateSearchError || 'Selecting a state clears any cities already chosen for that state'}
+                  noOptionsText={stateLoading ? 'Searching…' : 'No states found'}
+                />
+              </WizardFieldAnchor>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 5 }}>
+              <SearchableSelect
+                label="City search — State"
+                placeholder="Pick state to browse cities"
+                options={cityParentOptions}
+                value={cityBrowseState}
+                onChange={handleCityBrowseStateChange}
+                onSearch={handleCityParentSearch}
+                getOptionLabel={locationLabel}
+                isOptionEqualToValue={(a, b) => a?.code === b?.code}
+                loading={cityParentLoading}
+                error={cityParentSearchError}
+                helperText={cityParentSearchError || 'Temporary browse context — not a whole-state selection'}
+                noOptionsText={cityParentLoading ? 'Searching…' : 'No states found'}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 7 }}>
+              <WizardFieldAnchor field="partnerCity" error={fieldErrors.partnerCity}>
+                <SearchableSelect
+                  isMulti
+                  label="Cities"
+                  placeholder={cityBrowseState ? 'Search cities (min 2 chars)' : 'Pick a state first'}
+                  options={cityOptions}
+                  value={citiesForBrowseState}
+                  onChange={handleCitiesChange}
+                  onSearch={handleCitySearch}
+                  getOptionLabel={locationLabel}
+                  isOptionEqualToValue={(a, b) => a?.code === b?.code && a?.stateCode === b?.stateCode}
+                  loading={cityLoading}
+                  disabled={!cityBrowseState}
+                  error={fieldErrors.partnerCity || citySearchError}
+                  helperText={
+                    !cityBrowseState
+                      ? 'Select a state above to search its cities'
+                      : (citySearchError || 'Selecting cities removes that state from Whole States')
+                  }
+                  noOptionsText={cityLoading ? 'Searching…' : 'No cities found'}
+                />
+              </WizardFieldAnchor>
+            </Grid>
+          </Grid>
+        </>
+      )}
     </Box>
   );
 }

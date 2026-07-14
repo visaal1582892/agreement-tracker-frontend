@@ -1,15 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Box, Typography, Grid, TextField, Button, Chip, FormControl, Select, MenuItem,
-  FormHelperText, IconButton, alpha, Alert,
+  Box, Typography, Alert,
 } from '@mui/material';
-import { UploadFile, Delete } from '@mui/icons-material';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
-import { BRAND } from '../../../config/theme';
 import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
 import WizardSectionTitle from '../../../components/wizard/WizardSectionTitle';
-import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
+import AgreementFilesSection from '../../../components/upload/AgreementFilesSection';
 import Step2Products from './Step2Products';
 import Step2SupplyVendors from './Step2SupplyVendors';
 import AssetRentalScopeFields from './AssetRentalScopeFields';
@@ -46,8 +43,6 @@ export default function ConfigurationStep({
   onClearFieldError,
 }) {
   const [incomeTypes, setIncomeTypes] = useState([]);
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef(null);
   const details = agreement?.details ?? {};
   const asset = agreement?.asset ?? {};
   const vendorIds = state?.vendorIds ?? [];
@@ -86,27 +81,15 @@ export default function ConfigurationStep({
   const hasIncomeType = Boolean(details.incomeTypeId);
   const showGeographySection = isAssetRental || isCommercialContracts || isDataFee;
 
-  const addDocument = (file) => {
-    if (!file) return;
-    const doc = {
-      file,
-      fileName: file.name,
-      documentType: 'SUPPORTING_DOC',
-      preview: URL.createObjectURL(file),
-    };
-    onUpdateDetails({ documents: [...documents, doc] });
-    onClearFieldError?.('documents');
-  };
-
-  const removeDoc = (idx) => {
-    onUpdateDetails({ documents: documents.filter((_, i) => i !== idx) });
-  };
-
   const mergedFieldErrors = { ...fieldErrors };
   const scopeHasError = sectionHasError(mergedFieldErrors, SCOPE_ERROR_FIELDS);
   const geographyHasError = sectionHasError(mergedFieldErrors, GEO_ERROR_FIELDS);
   const settlementHasError = sectionHasError(mergedFieldErrors, SETTLEMENT_ERROR_FIELDS);
   const documentsHasError = Boolean(mergedFieldErrors.documents);
+
+  const handleDocumentsChange = (nextDocuments) => {
+    onUpdateDetails({ documents: nextDocuments });
+  };
 
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -206,6 +189,7 @@ export default function ConfigurationStep({
                   onUpdateDetails={onUpdateDetails}
                   fieldErrors={mergedFieldErrors}
                   onClearFieldError={onClearFieldError}
+                  allowAllLocations={isDataFee}
                 />
               )}
 
@@ -251,90 +235,13 @@ export default function ConfigurationStep({
             forceExpand={documentsHasError}
             hasError={documentsHasError}
           >
-            <WizardFieldAnchor field="documents" error={mergedFieldErrors.documents}>
-            <Box
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                addDocument(e.dataTransfer.files[0]);
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              sx={{
-                border: `2px dashed ${mergedFieldErrors.documents ? BRAND.red : BRAND.borderLight}`,
-                borderRadius: '10px',
-                bgcolor: dragOver ? alpha(BRAND.red, 0.04) : BRAND.bgGray,
-                p: 2.5,
-                textAlign: 'center',
-                mb: 1.5,
-                cursor: 'pointer',
-                transition: 'background-color 0.15s ease, border-color 0.15s ease',
-                '&:hover': { bgcolor: alpha(BRAND.red, 0.03), borderColor: '#94A3B8' },
-              }}
-            >
-              <UploadFile sx={{ fontSize: 36, color: BRAND.textSecondary, mb: 0.5 }} />
-              <Typography variant="body2" color="text.secondary" mb={1}>
-                Drag & drop or click to upload
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-              >
-                Browse Files
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                onChange={(e) => {
-                  addDocument(e.target.files[0]);
-                  e.target.value = '';
-                }}
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.eml"
-              />
-            </Box>
-
-            {documents.length > 0 && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {documents.map((doc, i) => (
-                  <Box
-                    key={`${doc.fileName}-${i}`}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.5,
-                      border: `1px solid ${BRAND.borderLight}`,
-                      borderRadius: '8px',
-                      px: 1.5,
-                      py: 1,
-                      bgcolor: BRAND.white,
-                    }}
-                  >
-                    <Chip label={doc.fileName} size="small" sx={{ flex: 1, justifyContent: 'flex-start', maxWidth: '100%' }} />
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <Select
-                        value={doc.documentType}
-                        onChange={(e) => {
-                          const nextDocs = [...documents];
-                          nextDocs[i] = { ...nextDocs[i], documentType: e.target.value };
-                          onUpdateDetails({ documents: nextDocs });
-                        }}
-                      >
-                        {DOCUMENT_TYPES.map((type) => (
-                          <MenuItem key={type} value={type}>{type.replace('_', ' ')}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <IconButton size="small" color="error" onClick={() => removeDoc(i)} aria-label="Remove document">
-                      <Delete fontSize="small" />
-                    </IconButton>
-                  </Box>
-                ))}
-              </Box>
-            )}
-            </WizardFieldAnchor>
+            <AgreementFilesSection
+              documents={documents}
+              onDocumentsChange={handleDocumentsChange}
+              documentTypes={DOCUMENT_TYPES}
+              fieldError={mergedFieldErrors.documents}
+              onClearFieldError={() => onClearFieldError?.('documents')}
+            />
           </CollapsibleSection>
         </>
       )}

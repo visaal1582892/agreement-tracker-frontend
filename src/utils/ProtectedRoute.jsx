@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
+  selectCurrentUser,
   selectIsAuthenticated,
   selectUserRights,
   refreshSession,
@@ -34,6 +35,15 @@ export function ProtectedRoute() {
 export function RightRoute({ rights = [], redirectTo }) {
   const userRights = useSelector(selectUserRights);
   const allowed = hasAnyRequiredRight(userRights, rights);
+  const fallback = redirectTo ?? defaultRouteForRights(userRights);
+  return allowed ? <Outlet /> : <Navigate to={fallback} replace />;
+}
+
+/** Guards routes by user role name (e.g. ADMIN). User needs any one of the listed roles. */
+export function RoleRoute({ roles = [], redirectTo }) {
+  const user = useSelector(selectCurrentUser);
+  const userRights = useSelector(selectUserRights);
+  const allowed = roles.some((role) => user?.roles?.includes(role));
   const fallback = redirectTo ?? defaultRouteForRights(userRights);
   return allowed ? <Outlet /> : <Navigate to={fallback} replace />;
 }

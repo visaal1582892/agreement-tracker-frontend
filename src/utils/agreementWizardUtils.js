@@ -1,7 +1,9 @@
 import { fetchSlabs } from '../api/commercialApi';
+import { mapDocumentsToApiPayload } from '../api/uploadApi';
 import { fetchStoreMappings } from '../api/storeMappingApi';
 import { formatLocalDateString } from './dateUtils';
 import { isAdHocIncomeType, isAssetRentalIncomeType, isCommercialContractsIncomeType, isDataFeeIncomeType, resolveWizardIncomeContext } from './incomeTypeUtils';
+import { GEOGRAPHY_MODE } from '../constants/geographyMode';
 import { sanitizeAgreementPayload } from './incomeTypePayloadUtils';
 import { buildApiProductRulesPayload } from './productScopeUtils';
 import { CALCULATION_BASIS } from '../constants/calculationBasis';
@@ -145,14 +147,13 @@ function scrubSettlementLeadTimeFields(details = {}) {
   return scrubbed;
 }
 
-export function buildAgreementDetailsPayload(agreement) {
+export function buildAgreementDetailsPayload(agreement, { includeDocuments = false } = {}) {
   if (!agreement) {
     return { details: {}, commercials: {} };
   }
   const { details, commercials } = agreement;
   const scrubbedDetails = scrubSettlementLeadTimeFields(details ?? {});
-  return {
-    details: {
+  const detailsPayload = {
       incomeTypeId: scrubbedDetails.incomeTypeId || null,
       agreementTypeId: scrubbedDetails.agreementTypeId || null,
       startDate: formatLocalDateString(scrubbedDetails.startDate),
@@ -176,7 +177,12 @@ export function buildAgreementDetailsPayload(agreement) {
         : null,
       calculationBasis: scrubbedDetails.calculationBasis || CALCULATION_BASIS.VENDOR_INVOICE,
       paymentRealizationType: scrubbedDetails.paymentRealizationType || PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE,
-    },
+  };
+  if (includeDocuments) {
+    detailsPayload.documents = mapDocumentsToApiPayload(scrubbedDetails.documents);
+  }
+  return {
+    details: detailsPayload,
     commercials: (() => {
       const hybridFlags = deriveHybridFlags(commercials.commercialStructure);
       const enableFlatBaseline = commercials.enableFlatBaseline ?? hybridFlags.enableFlatBaseline;
@@ -214,8 +220,8 @@ export function buildStep1CreatePayload(state) {
   };
 }
 
-export function buildStep1UpdatePayload(state, { requiresReapproval = false } = {}) {
-  const { details, commercials, asset } = buildAgreementDetailsPayload(state.agreement);
+export function buildStep1UpdatePayload(state, { requiresReapproval = false, includeDocuments = false } = {}) {
+  const { details, commercials, asset } = buildAgreementDetailsPayload(state.agreement, { includeDocuments });
   const payload = {
     agreementGroupId: state.agreementGroupId || null,
     newAgreementGroupName: state.newAgreementGroupName?.trim() || null,
@@ -233,7 +239,8 @@ export function buildStep1UpdatePayload(state, { requiresReapproval = false } = 
 }
 
 export function buildSanitizedStep1UpdatePayload(state, options = {}) {
-  const payload = buildStep1UpdatePayload(state, options);
+  const includeDocuments = Boolean(options.includeDocuments);
+  const payload = buildStep1UpdatePayload(state, { ...options, includeDocuments });
   const { details } = state.agreement ?? {};
   const ctx = resolveWizardIncomeContext(state, options.sourceAgreement, options.incomeTypes ?? []);
   return sanitizeAgreementPayload(
@@ -318,6 +325,7 @@ function collectSettlementRoutingFieldErrors(details, isAssetRental) {
 }
 
 function hasPartnerLocation(details) {
+  if (details?.geographyMode === GEOGRAPHY_MODE.ALL) return true;
   const states = Array.isArray(details?.partnerStates) ? details.partnerStates : [];
   const cities = Array.isArray(details?.partnerCities) ? details.partnerCities : [];
   if (!states.length && !cities.length) return false;
@@ -326,6 +334,7 @@ function hasPartnerLocation(details) {
 }
 
 function applyPartnerLocationFieldErrors(fieldErrors, details, incomeLabel) {
+  if (details?.geographyMode === GEOGRAPHY_MODE.ALL) return;
   const states = Array.isArray(details?.partnerStates) ? details.partnerStates : [];
   const cities = Array.isArray(details?.partnerCities) ? details.partnerCities : [];
   if (!states.length && !cities.length) {
@@ -364,8 +373,15 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
     fieldErrors.supplyVendors = 'Select at least one supply vendor';
   }
 
-  if (!isAssetRental && !details.documents?.length) {
-    fieldErrors.documents = 'At least one document is required';
+  if (!isAssetRental) {
+    const documents = details.documents ?? [];
+    const uploadsInProgress = documents.some((doc) => doc.uploadStatus === 'uploading');
+    const uploadedDocuments = documents.filter((doc) => doc.fileUrl && doc.uploadStatus !== 'error');
+    if (uploadsInProgress) {
+      fieldErrors.documents = 'Wait for document uploads to finish';
+    } else if (!uploadedDocuments.length) {
+      fieldErrors.documents = 'At least one document is required';
+    }
   }
 
   if (isAssetRental) {
@@ -409,9 +425,6 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
 
   if (!productRules?.manufacturers?.length) {
     fieldErrors.products = 'Select at least one manufacturer';
-  }
-  if (!productRules?.divisionRules?.length) {
-    fieldErrors.products = fieldErrors.products || 'Select at least one division';
   }
   Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
   return fieldErrors;
@@ -714,9 +727,18 @@ export function validateContractDetailsFields(details, enqueueSnackbar, { skipDo
       return false;
     }
   }
-  if (!skipDocuments && !details?.documents?.length) {
-    enqueueSnackbar('At least one document is required', { variant: 'warning' });
-    return false;
+  if (!skipDocuments) {
+    const documents = details?.documents ?? [];
+    const uploadsInProgress = documents.some((doc) => doc.uploadStatus === 'uploading');
+    const uploadedDocuments = documents.filter((doc) => doc.fileUrl && doc.uploadStatus !== 'error');
+    if (uploadsInProgress) {
+      enqueueSnackbar('Wait for document uploads to finish', { variant: 'warning' });
+      return false;
+    }
+    if (!uploadedDocuments.length) {
+      enqueueSnackbar('At least one document is required', { variant: 'warning' });
+      return false;
+    }
   }
   return true;
 }

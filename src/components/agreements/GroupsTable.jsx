@@ -50,6 +50,8 @@ function RowActionsMenu({ row, canDelete, onDelete, navigate }) {
         anchorEl={anchor}
         open={Boolean(anchor)}
         onClose={handleClose}
+        disableAutoFocusItem
+        disableEnforceFocus
         onClick={(e) => e.stopPropagation()}
         slotProps={{
           backdrop: {

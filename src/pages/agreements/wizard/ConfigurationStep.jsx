@@ -41,6 +41,7 @@ export default function ConfigurationStep({
   updateFields,
   fieldErrors = {},
   onClearFieldError,
+  vendorsLocked = false,
 }) {
   const [incomeTypes, setIncomeTypes] = useState([]);
   const details = agreement?.details ?? {};
@@ -138,6 +139,7 @@ export default function ConfigurationStep({
                   })),
                 })}
                 error={mergedFieldErrors.supplyVendors}
+                disabled={vendorsLocked}
               />
             )}
 

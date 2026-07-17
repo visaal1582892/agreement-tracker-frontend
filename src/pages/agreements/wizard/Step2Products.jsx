@@ -574,6 +574,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
               enrichedMeta.set(product.id, {
                 ...enrichedMeta.get(product.id),
                 divisionId: toNumericId(product.divisionId),
+                manufacturerId: toNumericId(product.manufacturerId),
               });
             }
           });
@@ -696,16 +697,56 @@ export default function Step2Products({ state, updateProductRules, info, error }
   ), []);
 
   const handleManufacturersChange = useCallback((selected) => {
+    const nextManufacturers = Array.isArray(selected) ? selected.map(normalizeManufacturer) : [];
+    const nextManufacturerIdSet = new Set(
+      nextManufacturers.map((manufacturer) => toNumericId(manufacturer.id)),
+    );
+    const removedManufacturerIdSet = new Set(
+      selectedManufacturers
+        .map((manufacturer) => toNumericId(manufacturer.id))
+        .filter((id) => !nextManufacturerIdSet.has(id)),
+    );
+
     suppressScopeResetRef.current = false;
     pendingDivisionIdsRef.current = null;
-    setSelectedManufacturers(Array.isArray(selected) ? selected.map(normalizeManufacturer) : []);
-    setSelectedDivisionIds([]);
-    setSelectedDivisionMeta(new Map());
-    setSelectedProductRuleIds([]);
-    setSelectedProductMeta(new Map());
+    setSelectedManufacturers(nextManufacturers);
     setDivisionPage(0);
     setProductPage(0);
-  }, []);
+
+    if (!nextManufacturers.length) {
+      setSelectedDivisionIds([]);
+      setSelectedDivisionMeta(new Map());
+      setSelectedProductRuleIds([]);
+      setSelectedProductMeta(new Map());
+      return;
+    }
+
+    if (!removedManufacturerIdSet.size) {
+      return;
+    }
+
+    const belongsToRemovedManufacturer = (meta) =>
+      meta != null && removedManufacturerIdSet.has(toNumericId(meta.manufacturerId));
+
+    setSelectedDivisionIds((prev) =>
+      prev.filter((id) => !belongsToRemovedManufacturer(selectedDivisionMeta.get(toNumericId(id)))));
+    setSelectedDivisionMeta((prev) => {
+      const next = new Map();
+      prev.forEach((meta, id) => {
+        if (!belongsToRemovedManufacturer(meta)) next.set(id, meta);
+      });
+      return next;
+    });
+    setSelectedProductRuleIds((prev) =>
+      prev.filter((id) => !belongsToRemovedManufacturer(selectedProductMeta.get(id))));
+    setSelectedProductMeta((prev) => {
+      const next = new Map();
+      prev.forEach((meta, id) => {
+        if (!belongsToRemovedManufacturer(meta)) next.set(id, meta);
+      });
+      return next;
+    });
+  }, [selectedManufacturers, selectedDivisionMeta, selectedProductMeta]);
 
   const handleManufacturerSearch = useCallback((query) => {
     setManufSearchText(query);
@@ -745,6 +786,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
           id,
           productName: product.productName,
           divisionId: toNumericId(product.divisionId),
+          manufacturerId: toNumericId(product.manufacturerId),
         });
       }
       return next;
@@ -880,13 +922,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
             <FormControl size="small" sx={{ ...ruleSelectSx, mb: 1 }} disabled={!hasProductScope}>
               <Select
                 value={productOp}
-                onChange={(event) => {
-                  const nextOp = event.target.value;
-                  if (nextOp === productOp) return;
-                  setProductOp(nextOp);
-                  setSelectedProductRuleIds([]);
-                  setSelectedProductMeta(new Map());
-                }}
+                onChange={(event) => setProductOp(event.target.value)}
               >
                 <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
                 <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>

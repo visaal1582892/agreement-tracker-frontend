@@ -9,7 +9,7 @@ import {
 import {
   SpaceDashboardOutlined, DescriptionOutlined,   CheckCircleOutlined, Search,
   Logout, Person, ExpandMore, StorageOutlined, ManageAccountsOutlined,
-  LocalOfferOutlined,
+  LocalOfferOutlined, CalculateOutlined,
 } from '@mui/icons-material';
 import NotificationBell from '../components/layout/NotificationBell';
 import { alpha } from '@mui/material/styles';
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: SpaceDashboardOutlined, path: ROUTES.DASHBOARD, rights: [RIGHTS.DASHBOARD_VIEW] },
   { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS_GROUPS, rights: [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL] },
   { label: 'Approvals', icon: CheckCircleOutlined, path: ROUTES.APPROVALS, rights: [RIGHTS.AGREEMENT_APPROVE] },
+  { label: 'Payout Calculator', icon: CalculateOutlined, path: ROUTES.COMMERCIAL_PAYOUTS, rights: [RIGHTS.COMMERCIAL_PAYOUT_CALCULATE] },
   // TODO: uncomment when price-offs is ready
   { label: 'Price Offs', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS, rights: [RIGHTS.PRICE_OFF_MANAGE] },
   { label: 'Price Off Approvals', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS_APPROVALS, rights: [RIGHTS.PRICE_OFF_APPROVE] },

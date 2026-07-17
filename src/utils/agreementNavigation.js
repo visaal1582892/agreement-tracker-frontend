@@ -10,13 +10,18 @@ export function isIncompleteDraft(agreement) {
   return missingType || missingStartDate;
 }
 
-export function buildAgreementEditPath(agreementId, { step } = {}) {
+export function buildAgreementEditPath(agreementId, { step, mode } = {}) {
   if (agreementId == null || agreementId === '') return null;
   const base = `/agreements/${agreementId}/edit`;
+  const params = new URLSearchParams();
   if (step != null && step !== '') {
-    return `${base}?step=${step}`;
+    params.set('step', String(step));
   }
-  return base;
+  if (mode) {
+    params.set('mode', String(mode));
+  }
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
 }
 
 export function buildAgreementDetailPath(agreementId) {

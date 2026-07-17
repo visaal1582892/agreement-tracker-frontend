@@ -65,10 +65,27 @@ export function canEditApproved(ctx, agreement, { isReadOnlyView = false } = {})
   );
 }
 
-/** Owner + AGREEMENT_EDIT + approved current version eligible for renewal. */
-export function canRenew(ctx, agreement, { isReadOnlyView = false } = {}) {
-  if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
+/** True when agreement is expired or within 90 days of expiry (inclusive). */
+export function isWithinRenewWindow(agreement, { today = null } = {}) {
+  if (!agreement) return false;
+  if (agreement.computedStatus === 'EXPIRED') return true;
+  if (!agreement.expiryDate) return false;
+  const now = today ?? new Date();
+  const expiry = new Date(agreement.expiryDate);
+  if (Number.isNaN(expiry.getTime())) return false;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfExpiry = new Date(expiry.getFullYear(), expiry.getMonth(), expiry.getDate());
+  const daysToExpiry = Math.round((startOfExpiry - startOfToday) / (24 * 60 * 60 * 1000));
+  return daysToExpiry <= 90;
+}
+
+/** Owner + AGREEMENT_EDIT + APPROVED + within renew window.
+ * EXPIRED is read-only for edits but renew stays available (ignores isReadOnlyView). */
+export function canRenew(ctx, agreement, { isReadOnlyView: _isReadOnlyView = false } = {}) {
+  if (!agreement?.approvalStatus) return false;
   if (agreement.computedStatus === 'TERMINATED' || agreement.terminationDate) return false;
+  if (agreement.computedStatus === 'SUPERSEDED') return false;
+  if (!isWithinRenewWindow(agreement)) return false;
   return (
     agreement.approvalStatus === 'APPROVED'
     && isAgreementOwner(ctx.user, agreement)
@@ -112,10 +129,9 @@ export function canTerminate(ctx, agreement, { isReadOnlyView = false } = {}) {
   );
 }
 
-/** AGREEMENT_CREATE + approvalStatus !== DRAFT. */
-export function canClone(ctx, agreement) {
-  if (!agreement?.approvalStatus || isDraftAgreement(agreement)) return false;
-  return ctx.hasRight(RIGHTS.AGREEMENT_CREATE);
+/** AGREEMENT_CREATE + approvalStatus !== DRAFT. Temporarily hidden — clone flow not production-ready. */
+export function canClone(_ctx, _agreement) {
+  return false;
 }
 
 /** (owner or ADMIN_USERS) + not DRAFT + allowed status + no pending action request. */
@@ -154,7 +170,7 @@ export function getDetailPageActions(ctx, agreement, { isReadOnlyView = false } 
     renew: canRenew(ctx, agreement, options),
     revise: canRevise(ctx, agreement, options),
     terminate: canTerminate(ctx, agreement, options),
-    clone: !draft && canClone(ctx, agreement),
+    clone: false,
     transfer: !draft && canTransfer(ctx, agreement),
   };
 }
@@ -167,7 +183,7 @@ export function getListRowActions(ctx, agreement) {
     revise: canRevise(ctx, agreement),
     submit: canSubmit(ctx, agreement),
     approveReject: canApprove(ctx, agreement),
-    clone: canClone(ctx, agreement),
+    clone: false,
     transfer: canTransfer(ctx, agreement),
   };
 }

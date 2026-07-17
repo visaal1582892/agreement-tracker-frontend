@@ -14,6 +14,7 @@ export const RIGHTS = {
   PRICE_OFF_VIEW: 'PRICE_OFF_VIEW',
   PRICE_OFF_MANAGE: 'PRICE_OFF_MANAGE',
   PRICE_OFF_APPROVE: 'PRICE_OFF_APPROVE',
+  COMMERCIAL_PAYOUT_CALCULATE: 'COMMERCIAL_PAYOUT_CALCULATE',
 };
 
 /** Minimum right(s) required to access a route (any match grants access). */
@@ -24,6 +25,7 @@ export const ROUTE_RIGHTS = {
   '/agreements/new': [RIGHTS.AGREEMENT_CREATE],
   '/agreements/wizard': [RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT],
   '/approvals': [RIGHTS.AGREEMENT_APPROVE],
+  '/commercial-payouts': [RIGHTS.COMMERCIAL_PAYOUT_CALCULATE],
   '/price-offs': [RIGHTS.PRICE_OFF_MANAGE],
   '/price-offs/approvals': [RIGHTS.PRICE_OFF_APPROVE],
   '/admin/users': [RIGHTS.ADMIN_USERS],

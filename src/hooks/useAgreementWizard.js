@@ -73,6 +73,14 @@ const INITIAL_STATE = {
     productRules: [],
   },
   agreement: createBlankAgreement(),
+  /** Edit/Renew only: nested commercial children held in memory until submit. */
+  commercialData: {
+    jbp: null,
+    jbpBlueprint: null,
+    storeMappings: null,
+    jbpParseErrors: [],
+    storeParseErrors: [],
+  },
 };
 
 export function mapProductRulesFromApi(agreement) {
@@ -197,6 +205,16 @@ export function useAgreementWizard() {
     }));
   }, []);
 
+  const updateCommercialData = useCallback((patch) => {
+    setState((prev) => ({
+      ...prev,
+      commercialData: {
+        ...(prev.commercialData ?? INITIAL_STATE.commercialData),
+        ...patch,
+      },
+    }));
+  }, []);
+
   const nextStep = useCallback(() => {
     setState((prev) => ({ ...prev, step: Math.min(prev.step + 1, 3) }));
   }, []);
@@ -252,10 +270,29 @@ export function useAgreementWizard() {
 
   const hydrateFromEdit = useCallback((agreement, options = {}) => {
     if (!agreement) return;
+    const mapped = mapPersistedAgreementFields(agreement, options.slabCount);
+    if (options.renew) {
+      // Renew: force blank dates — user must enter new term (start > source expiry).
+      mapped.agreement = {
+        ...mapped.agreement,
+        details: {
+          ...mapped.agreement.details,
+          startDate: null,
+          expiryDate: null,
+        },
+      };
+    }
     setState({
-      step: 0,
+      step: options.step ?? 0,
       newAgreementGroupName: '',
-      ...mapPersistedAgreementFields(agreement, options.slabCount),
+      ...mapped,
+      commercialData: {
+        jbp: null,
+        jbpBlueprint: null,
+        storeMappings: null,
+        jbpParseErrors: [],
+        storeParseErrors: [],
+      },
     });
   }, []);
 
@@ -300,6 +337,7 @@ export function useAgreementWizard() {
     updateAgreementDetails,
     updateAgreementAsset,
     updateAgreementCommercials,
+    updateCommercialData,
     nextStep,
     prevStep,
     reset,

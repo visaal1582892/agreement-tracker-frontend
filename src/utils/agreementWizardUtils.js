@@ -19,6 +19,7 @@ import {
 } from '../constants/commercialStructure';
 import { LEAD_TIME_BASIS } from '../constants/leadTimeBasis';
 import { getCommercialStepErrorSnackbar, getFirstWizardFieldErrorMessage } from './wizardValidationUx';
+import dayjs from 'dayjs';
 
 function validateParticipatingStoreCount(asset) {
   const raw = asset?.storeCount;
@@ -251,33 +252,227 @@ export function buildSanitizedStep1UpdatePayload(state, options = {}) {
   );
 }
 
-export function validateStep1Fields(state, enqueueSnackbar) {
-  if (!state.agreementGroupId && !state.newAgreementGroupName?.trim()) {
-    enqueueSnackbar('Select or enter an agreement group', { variant: 'warning' });
+/** Payload for one-shot edit-submit / renew-submit (no DRAFT). */
+export function buildRevisionSubmitPayload(state, {
+  baseVersionNumber,
+  comments,
+  sourceAgreement = null,
+  incomeTypes = [],
+} = {}) {
+  const sanitized = buildSanitizedStep1UpdatePayload(state, {
+    includeDocuments: true,
+    sourceAgreement,
+    incomeTypes,
+  });
+  const commercialData = buildCommercialDataSubmitPayload(
+    state.commercialData,
+    sanitized.commercials ?? state.agreement?.commercials ?? {},
+  );
+  return {
+    baseVersionNumber,
+    comments: comments?.trim() || '',
+    agreementName: state.agreementName || null,
+    vendorIds: sanitized.vendorIds,
+    vendors: sanitized.vendors,
+    productRules: sanitized.productRules,
+    details: sanitized.details,
+    commercials: sanitized.commercials,
+    asset: sanitized.asset,
+    commercialData,
+  };
+}
+
+function buildCommercialDataSubmitPayload(commercialData, commercials = {}) {
+  if (!commercialData) {
+    return null;
+  }
+  const structureType = resolveStructureType(commercials.commercialStructure);
+  const hasStoreMappingsField = Array.isArray(commercialData.storeMappings);
+  const mappedStores = hasStoreMappingsField
+    ? commercialData.storeMappings.map((s) => ({
+      storeId: s.storeId,
+      storeCode: s.storeCode ?? null,
+      storeName: s.storeName ?? null,
+      stateId: s.stateId ?? null,
+      stateName: s.stateName ?? null,
+    }))
+    : null;
+
+  // FLAT revisions must not carry leftover JBP memory into submit.
+  if (structureType === STRUCTURE_TYPE.FLAT) {
+    if (!hasStoreMappingsField) {
+      return null;
+    }
+    return {
+      slabs: null,
+      jbp: null,
+      jbpBlueprint: null,
+      // Preserve [] — explicit empty upload is not the same as null (deep-copy).
+      storeMappings: mappedStores,
+    };
+  }
+  const hasJbp = commercialData.jbp?.sheets?.length > 0;
+  const hasBlueprint = commercialData.jbpBlueprint?.configurations?.length > 0;
+  if (!hasJbp && !hasStoreMappingsField && !hasBlueprint) {
+    return null;
+  }
+  return {
+    slabs: null,
+    jbp: hasJbp ? commercialData.jbp : null,
+    storeMappings: mappedStores,
+    jbpBlueprint: hasBlueprint ? commercialData.jbpBlueprint : null,
+  };
+}
+
+/** True when renew, or edit with start/expiry changed vs source. */
+export function isRevisionDateChange(isRenewMode, details, sourceAgreement) {
+  if (isRenewMode) return true;
+  if (!sourceAgreement) return false;
+  const start = details?.startDate ?? null;
+  const expiry = details?.expiryDate ?? null;
+  const sourceStart = sourceAgreement.startDate ?? null;
+  const sourceExpiry = sourceAgreement.expiryDate ?? null;
+  return String(start || '') !== String(sourceStart || '')
+    || String(expiry || '') !== String(sourceExpiry || '');
+}
+
+/** Excel-driven structures only: Asset stores, or Commercial Contracts SLAB/JBP. FLAT skipped. */
+export function requiresExcelCommercialOverride(state, sourceAgreement = null) {
+  const ctx = resolveWizardIncomeContext(state, sourceAgreement, []);
+  if (isAssetRentalIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
+    return true;
+  }
+  if (isCommercialContractsIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
+    const structure = state.agreement?.commercials?.commercialStructure
+      ?? sourceAgreement?.commercialStructure
+      ?? null;
+    return resolveStructureType(structure) === STRUCTURE_TYPE.SLABS;
+  }
+  return false;
+}
+
+export function requiresNewCommercials(isRenewMode, state, sourceAgreement = null) {
+  if (!isRevisionDateChange(isRenewMode, state?.agreement?.details, sourceAgreement)) {
     return false;
   }
-  return validateFoundationalMetadata(state, enqueueSnackbar);
+  return requiresExcelCommercialOverride(state, sourceAgreement);
+}
+
+/** Structure-specific: JBP/slabs for CC SLAB; storeMappings for Asset. */
+export function hasRequiredCommercialOverride(state, sourceAgreement = null) {
+  const ctx = resolveWizardIncomeContext(state, sourceAgreement, []);
+  const data = state?.commercialData;
+  if (isAssetRentalIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
+    // Array (including []) = explicit override; null/undefined = deep-copy.
+    return Array.isArray(data?.storeMappings);
+  }
+  if (isCommercialContractsIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
+    const hasJbp = Array.isArray(data?.jbp?.sheets) && data.jbp.sheets.length > 0;
+    const hasBlueprint = Array.isArray(data?.jbpBlueprint?.configurations)
+      && data.jbpBlueprint.configurations.length > 0;
+    const hasSlabs = Array.isArray(data?.slabs) && data.slabs.length > 0;
+    return (hasJbp && hasBlueprint) || hasSlabs;
+  }
+  return true;
+}
+
+export function validateRevisionCommercialOverride(state, enqueueSnackbar, {
+  isRenewMode = false,
+  sourceAgreement = null,
+} = {}) {
+  if (!requiresNewCommercials(isRenewMode, state, sourceAgreement)) {
+    return true;
+  }
+  if (hasRequiredCommercialOverride(state, sourceAgreement)) {
+    return true;
+  }
+  enqueueSnackbar(
+    'Because the agreement dates have changed, you must upload a new commercial structure for this period.',
+    { variant: 'warning' },
+  );
+  return false;
+}
+
+export function validateStep1Fields(state, enqueueSnackbar, {
+  renew = false,
+  sourceExpiryDate = null,
+} = {}) {
+  const fieldErrors = collectFoundationalStepErrors(state, { renew, sourceExpiryDate });
+  if (Object.keys(fieldErrors).length === 0) return true;
+  const firstMessage = Object.values(fieldErrors).find(Boolean);
+  if (firstMessage) {
+    enqueueSnackbar(firstMessage, { variant: 'warning' });
+  }
+  return false;
+}
+
+/** Field-level errors for Foundational Setup (group, classification, dates). */
+export function collectFoundationalStepErrors(state, {
+  renew = false,
+  sourceExpiryDate = null,
+} = {}) {
+  const fieldErrors = {};
+  if (!state.agreementGroupId && !state.newAgreementGroupName?.trim()) {
+    fieldErrors.agreementGroup = 'Select or enter an agreement group';
+  }
+  const { details } = state.agreement ?? {};
+  if (!details?.incomeTypeId) {
+    fieldErrors.incomeTypeId = 'Income type is required';
+  }
+  if (!details?.agreementTypeId) {
+    fieldErrors.agreementTypeId = 'Agreement type is required';
+  }
+  if (!details?.startDate) {
+    fieldErrors.startDate = 'Start date is required';
+  }
+  if (!details?.expiryDate) {
+    fieldErrors.expiryDate = 'Expiry date is required';
+  }
+
+  if (renew && details?.startDate) {
+    if (!sourceExpiryDate) {
+      fieldErrors.startDate = 'Source agreement expiry date is required for renewal';
+    } else {
+      const start = dayjs(details.startDate).startOf('day');
+      const minStart = dayjs(sourceExpiryDate).startOf('day').add(1, 'day');
+      if (!start.isValid() || !minStart.isValid()) {
+        fieldErrors.startDate = 'Invalid renewal dates';
+      } else if (start.isBefore(minStart)) {
+        fieldErrors.startDate =
+          `Start date must be on or after ${minStart.format('DD MMM YYYY')} (day after previous expiry)`;
+      }
+    }
+  }
+
+  if (details?.startDate && details?.expiryDate) {
+    const start = dayjs(details.startDate).startOf('day');
+    const expiry = dayjs(details.expiryDate).startOf('day');
+    if (start.isValid() && expiry.isValid() && !expiry.isAfter(start)) {
+      fieldErrors.expiryDate = 'Expiry date must be after start date';
+    }
+  }
+
+  return fieldErrors;
+}
+
+/** Renew: startDate must be strictly after source expiry (floor = expiry + 1 day). */
+export function validateRenewDates(state, enqueueSnackbar, sourceExpiryDate) {
+  const fieldErrors = collectFoundationalStepErrors(state, {
+    renew: true,
+    sourceExpiryDate,
+  });
+  const message = fieldErrors.startDate || fieldErrors.expiryDate;
+  if (!message) return true;
+  enqueueSnackbar(message, { variant: 'warning' });
+  return false;
 }
 
 export function validateFoundationalMetadata(state, enqueueSnackbar) {
-  const { details } = state.agreement ?? {};
-  if (!details?.incomeTypeId) {
-    enqueueSnackbar('Income type is required', { variant: 'warning' });
-    return false;
-  }
-  if (!details?.agreementTypeId) {
-    enqueueSnackbar('Agreement type is required', { variant: 'warning' });
-    return false;
-  }
-  if (!details?.startDate) {
-    enqueueSnackbar('Start date is required', { variant: 'warning' });
-    return false;
-  }
-  if (!details?.expiryDate) {
-    enqueueSnackbar('Expiry date is required', { variant: 'warning' });
-    return false;
-  }
-  return true;
+  const fieldErrors = collectFoundationalStepErrors(state, { renew: false });
+  const message = Object.values(fieldErrors).find(Boolean);
+  if (!message) return true;
+  enqueueSnackbar(message, { variant: 'warning' });
+  return false;
 }
 
 export function validateCommercialConfigurationStep(state, enqueueSnackbar, incomeTypes = [], sourceAgreement = null) {
@@ -471,10 +666,41 @@ export async function getAssetRentalUnmappedStatesWarning(
   }
 }
 
+function reconcileStoreCount(actualMappedCount, expectedStoreCount) {
+  const fieldErrors = {};
+  const expected = Number(expectedStoreCount);
+
+  if (!Number.isInteger(expected) || expected <= 0) {
+    if (actualMappedCount === 0) {
+      fieldErrors.storeMappings = 'Upload at least one mapped store';
+    }
+    return fieldErrors;
+  }
+
+  if (expected !== actualMappedCount) {
+    const diff = Math.abs(expected - actualMappedCount);
+    const status = actualMappedCount < expected
+      ? `missing ${diff} store(s)`
+      : `${diff} store(s) in excess`;
+    fieldErrors.storeMappings = `Reconciliation Lock: Step 2 scope mandates exactly ${expected} stores, but you have mapped ${actualMappedCount} (${status}).`;
+  }
+  return fieldErrors;
+}
+
+/**
+ * Validate Asset store count.
+ * When memoryStoreMappings is an array (revision upload), validate that list.
+ * Otherwise fetch mappings from the agreement version (create draft / deep-copy path).
+ */
 export async function validateAssetRentalStoreMappings(
   agreementVersionId,
   expectedStoreCount = 0,
+  memoryStoreMappings = undefined,
 ) {
+  if (Array.isArray(memoryStoreMappings)) {
+    return reconcileStoreCount(memoryStoreMappings.length, expectedStoreCount);
+  }
+
   const fieldErrors = {};
   if (!agreementVersionId) {
     fieldErrors.storeMappings = 'Save contract details before uploading stores';
@@ -484,22 +710,7 @@ export async function validateAssetRentalStoreMappings(
   try {
     const mappedStores = await fetchStoreMappings(agreementVersionId);
     const actualMappedCount = Array.isArray(mappedStores) ? mappedStores.length : 0;
-    const expected = Number(expectedStoreCount);
-
-    if (!Number.isInteger(expected) || expected <= 0) {
-      if (actualMappedCount === 0) {
-        fieldErrors.storeMappings = 'Upload at least one mapped store';
-      }
-      return fieldErrors;
-    }
-
-    if (expected !== actualMappedCount) {
-      const diff = Math.abs(expected - actualMappedCount);
-      const status = actualMappedCount < expected
-        ? `missing ${diff} store(s)`
-        : `${diff} store(s) in excess`;
-      fieldErrors.storeMappings = `Reconciliation Lock: Step 2 scope mandates exactly ${expected} stores, but you have mapped ${actualMappedCount} (${status}).`;
-    }
+    return reconcileStoreCount(actualMappedCount, expectedStoreCount);
   } catch {
     fieldErrors.storeMappings = 'Unable to validate mapped stores';
   }
@@ -594,7 +805,12 @@ export async function collectCommercialStructureStepErrorsAsync(
   if (isAssetRental) {
     const versionId = serverAgreementId ?? sourceAgreement?.id;
     const expectedStoreCount = Number(state.agreement?.asset?.storeCount ?? 0);
-    const storeErrors = await validateAssetRentalStoreMappings(versionId, expectedStoreCount);
+    const memoryMappings = state.commercialData?.storeMappings;
+    const storeErrors = await validateAssetRentalStoreMappings(
+      versionId,
+      expectedStoreCount,
+      Array.isArray(memoryMappings) ? memoryMappings : undefined,
+    );
     Object.assign(fieldErrors, storeErrors);
     return fieldErrors;
   }

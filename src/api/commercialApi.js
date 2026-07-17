@@ -91,6 +91,29 @@ export async function switchCommercialType(agreementVersionId, payload) {
   await axiosInstance.put(ENDPOINTS.COMMERCIAL_TYPE_SWITCH(agreementVersionId), payload);
 }
 
+/**
+ * Triggers the commercial payout engine for a version.
+ * @param {number|string} agreementVersionId
+ * @param {{ periods: {month:number, year:number}[], productIds?: string[]|null,
+ *   supplierIds?: number[]|null, stateCodes?: string[]|null, cityCodes?: string[]|null }} request
+ * @returns {Promise<object>} CommercialPayoutResponse
+ */
+export async function calculateCommercialPayouts(agreementVersionId, request) {
+  const { data } = await axiosInstance.post(
+    ENDPOINTS.COMMERCIAL_PAYOUTS(agreementVersionId),
+    request,
+  );
+  return data;
+}
+
+export async function aggregatePurchases(agreementVersionId, request) {
+  const { data } = await axiosInstance.post(
+    ENDPOINTS.PURCHASE_AGGREGATION(agreementVersionId),
+    request,
+  );
+  return data;
+}
+
 export function downloadBlob(blob, filename) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');

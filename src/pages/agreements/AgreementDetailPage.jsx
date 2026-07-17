@@ -8,7 +8,7 @@ import {
   List, ListItemButton, ListItemText, Accordion, AccordionSummary, AccordionDetails,
   Breadcrumbs, Link as MuiLink,
 } from '@mui/material';
-import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, ContentCopy, SwapHoriz, History, NavigateNext } from '@mui/icons-material';
+import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -19,7 +19,6 @@ import { useModal } from '../../hooks/useModal';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
 import { isHistoricalAgreement, isReadOnlyAgreement } from '../../utils/authUtils';
 import { ROUTES } from '../../config/routes';
-import { cloneAgreementOnServer } from '../../utils/agreementClone';
 import { buildAgreementEditPath } from '../../utils/agreementNavigation';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
@@ -29,6 +28,31 @@ import JbpReviewShowcase from './wizard/JbpReviewShowcase';
 import { resolveAgreementFinancialYearStartMonth } from '../../utils/jbpMatrixUtils';
 import { isCommercialContractsIncomeType } from '../../utils/incomeTypeUtils';
 import dayjs from 'dayjs';
+
+/** MUI StepIcon — strip internal props so they never hit the DOM. */
+function TimelineStepIcon({
+  active,
+  completed,
+  error,
+  icon,
+  StepIconComponent,
+  ownerState,
+  color = '#999',
+  className,
+}) {
+  return (
+    <Box
+      className={className}
+      sx={{
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        bgcolor: color,
+        mt: 0.5,
+      }}
+    />
+  );
+}
 
 export default function AgreementDetailPage({
   embeddedAgreementId,
@@ -53,7 +77,6 @@ export default function AgreementDetailPage({
   const [submitRevisionComments, setSubmitRevisionComments] = useState('');
   const rejectModal = useModal();
   const terminateModal = useModal();
-  const cloneModal = useModal();
   const transferModal = useModal();
   const submitModal = useModal();
   const [terminateData, setTerminateData] = useState({ comments: '', requestedTerminationDate: '' });
@@ -285,10 +308,17 @@ export default function AgreementDetailPage({
     ? dayjs(agreement.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day')
     : null;
   const isCurrentVersion = Boolean(group?.currentVersionId && selectedVersionId === group.currentVersionId);
+  // In-progress toggle: active/near-expiry approved current version (not read-only superseded/terminated).
   const showLifecycleActions = isCurrentVersion
     && agreement?.approvalStatus === 'APPROVED'
-    && !isReadOnlyView
-    && (actions?.editApproved || actions?.terminate);
+    && agreement?.computedStatus !== 'TERMINATED'
+    && agreement?.computedStatus !== 'SUPERSEDED'
+    && (actions?.editApproved || actions?.terminate || actions?.renew)
+    && (agreement?.computedStatus === 'EXPIRED'
+      || (daysToExpiry != null && daysToExpiry <= 90)
+      || Boolean(agreement?.inProgressFlag));
+  // Renew: rights (actions.renew) + current APPROVED + window (EXPIRED or ≤90 days).
+  const showRenewButton = isCurrentVersion && actions?.renew;
 
   const handleToggleInProgress = async () => {
     try {
@@ -303,27 +333,10 @@ export default function AgreementDetailPage({
     }
   };
 
-  const handleRenew = async () => {
-    try {
-      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_RENEW(agreementId));
-      enqueueSnackbar('Renewal draft created — continue in wizard', { variant: 'success' });
-      const path = buildAgreementEditPath(data.versionId, { step: 2 });
-      if (path) navigate(path);
-    } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Renewal failed', { variant: 'error' });
-    }
-  };
-
-  const handleCloneConfirm = async () => {
-    if (!selectedVersionId) return;
-    cloneModal.close();
-    try {
-      const cloned = await cloneAgreementOnServer(axiosInstance, ENDPOINTS, selectedVersionId);
-      enqueueSnackbar('Product scope copied — complete remaining details', { variant: 'info' });
-      navigate(buildAgreementEditPath(cloned.id, { step: 2 }));
-    } catch {
-      enqueueSnackbar('Failed to clone agreement', { variant: 'error' });
-    }
+  const handleRenew = () => {
+    const versionId = group?.currentVersionId || selectedVersionId;
+    const path = buildAgreementEditPath(versionId, { step: 1, mode: 'renew' });
+    if (path) navigate(path);
   };
 
   const handleSelectVersion = (versionId) => {
@@ -486,7 +499,10 @@ export default function AgreementDetailPage({
                           {v.agreementName || group?.agreementName || `V${v.versionNumber}`}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">V{v.versionNumber}</Typography>
-                        <StatusBadge status={v.computedStatus} />
+                        <StatusBadge
+                          status={v.computedStatus}
+                          terminalStatus={v.computedStatus === 'SUPERSEDED' ? v.terminalStatus : null}
+                        />
                         {group?.currentVersionId === v.id && (
                           <Chip label="Current" size="small" color="success" variant="outlined" />
                         )}
@@ -639,18 +655,22 @@ export default function AgreementDetailPage({
                 )}
                 {actions?.editApproved && (
                   <Button variant="outlined" fullWidth startIcon={<Edit />}
-                    onClick={() => navigate(`/agreements/${selectedVersionId}/edit`)}>
+                    onClick={() => navigate(buildAgreementEditPath(
+                      group?.currentVersionId || selectedVersionId,
+                    ))}>
                     Edit (New Version)
                   </Button>
                 )}
                 {actions?.revise && (
                   <Button variant="contained" fullWidth startIcon={<Edit />}
-                    onClick={() => navigate(`/agreements/${selectedVersionId}/edit`)}
+                    onClick={() => navigate(buildAgreementEditPath(selectedVersionId))}
                     sx={{ bgcolor: BRAND.red }}>
                     Revise & Resubmit
                   </Button>
                 )}
-                {showLifecycleActions && (daysToExpiry <= 90 || agreement?.computedStatus === 'EXPIRED') && (
+                {showLifecycleActions && (agreement?.computedStatus === 'EXPIRED'
+                  || (daysToExpiry != null && daysToExpiry <= 90)
+                  || Boolean(agreement?.inProgressFlag)) && (
                   <Button
                     variant="outlined"
                     color="warning"
@@ -660,10 +680,7 @@ export default function AgreementDetailPage({
                     {agreement?.inProgressFlag ? 'Clear Discussions In Progress' : 'Mark Discussions in Progress'}
                   </Button>
                 )}
-                {showLifecycleActions
-                  && actions?.renew
-                  && agreement?.computedStatus !== 'TERMINATED'
-                  && (agreement?.computedStatus === 'EXPIRED' || daysToExpiry <= 90) && (
+                {showRenewButton && (
                   <Button
                     variant="contained"
                     fullWidth
@@ -678,15 +695,28 @@ export default function AgreementDetailPage({
                     Terminate
                   </Button>
                 )}
-                {actions?.clone && (
-                  <Button variant="outlined" fullWidth startIcon={<ContentCopy />} onClick={cloneModal.open}>
-                    Clone (Copy Products)
-                  </Button>
-                )}
                 {actions?.transfer && (
                   <Button variant="outlined" fullWidth startIcon={<SwapHoriz />} onClick={transferModal.open}>
                     Transfer Ownership
                   </Button>
+                )}
+                {!actions?.submit
+                  && !actions?.editDraft
+                  && !actions?.approve
+                  && !actions?.editApproved
+                  && !actions?.revise
+                  && !showRenewButton
+                  && !actions?.terminate
+                  && !actions?.transfer
+                  && !(showLifecycleActions && (
+                    agreement?.computedStatus === 'EXPIRED'
+                    || (daysToExpiry != null && daysToExpiry <= 90)
+                    || Boolean(agreement?.inProgressFlag)
+                  )) && (
+                  <Typography variant="body2" color="text.secondary">
+                    No actions available for your role on this version.
+                    Edit / Renew / Terminate require ownership + edit rights on the current approved version.
+                  </Typography>
                 )}
               </Box>
             </Paper>
@@ -702,9 +732,12 @@ export default function AgreementDetailPage({
                 {timeline.map((t, i) => (
                   <Step key={t.id} active completed>
                     <StepLabel
-                      StepIconComponent={() => (
-                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: ACTION_COLOR[t.operationalEvent || t.action] || '#999', mt: 0.5 }} />
-                      )}
+                      slots={{ stepIcon: TimelineStepIcon }}
+                      slotProps={{
+                        stepIcon: {
+                          color: ACTION_COLOR[t.operationalEvent || t.action] || '#999',
+                        },
+                      }}
                     >
                       <Typography variant="body2" fontWeight={600}>
                         {formatTimelineAction(t)} — {t.actorName || `User ${t.actorUserId}`}
@@ -771,15 +804,6 @@ export default function AgreementDetailPage({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <ConfirmDialog
-        open={cloneModal.isOpen}
-        onClose={cloneModal.close}
-        onConfirm={handleCloneConfirm}
-        title="Clone Agreement"
-        message="This will copy the product scope into a new draft. Proceed?"
-        confirmLabel="Proceed"
-      />
 
       <TransferOwnershipModal
         open={transferModal.isOpen}

@@ -31,6 +31,7 @@ export default function Step2SupplyVendors({
   selectedVendors = [],
   onVendorChange,
   error,
+  disabled = false,
 }) {
   const [vendorSearchText, setVendorSearchText] = useState('');
   const [fetchedVendors, setFetchedVendors] = useState([]);
@@ -140,11 +141,14 @@ export default function Step2SupplyVendors({
               loading={isVendorLoading}
               maxVisibleChips={2}
               required
+              disabled={disabled}
             />
-            <BulkVendorInput
-              selectedVendors={resolvedVendors}
-              onChange={handleVendorChange}
-            />
+            {!disabled && (
+              <BulkVendorInput
+                selectedVendors={resolvedVendors}
+                onChange={handleVendorChange}
+              />
+            )}
           </WizardFieldAnchor>
         </Grid>
       </Grid>

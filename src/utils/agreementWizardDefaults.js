@@ -66,6 +66,13 @@ export function buildStateAfterClassificationReset(prev) {
       divisionRules: [],
       productRules: [],
     },
+    commercialData: {
+      jbp: null,
+      jbpBlueprint: null,
+      storeMappings: null,
+      jbpParseErrors: [],
+      storeParseErrors: [],
+    },
     agreement: {
       id: prev.agreement?.id ?? blank.id,
       details: {

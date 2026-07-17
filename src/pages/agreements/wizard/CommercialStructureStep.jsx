@@ -7,6 +7,7 @@ import CommercialAgreementsJbpSection from './CommercialAgreementsJbpSection';
 import DataFeeCommercialFields from './DataFeeCommercialFields';
 import HybridCommercialFields from './HybridCommercialFields';
 import StoreMappingImporter from './StoreMappingImporter';
+import RevisionStoreMappingSection from './RevisionStoreMappingSection';
 import { hasPersistedContractDetails } from '../../../utils/agreementWizardUtils';
 import {
   isAdHocIncomeType,
@@ -23,8 +24,16 @@ export default function CommercialStructureStep({
   sourceAgreement,
   onCommercialsAdvance,
   fieldErrors = {},
+  /** Edit/Renew memory-only commercial Excel flow */
+  revisionMode = false,
+  sourceVersionId = null,
+  commercialData = null,
+  onUpdateCommercialData,
+  requiresNewCommercials = false,
 }) {
-  const persisted = hasPersistedContractDetails(sourceAgreement);
+  const persisted = revisionMode
+    || hasPersistedContractDetails(sourceAgreement)
+    || hasPersistedContractDetails(agreement);
   const incomeTypeId = agreement.details?.incomeTypeId ?? sourceAgreement?.incomeTypeId;
   const incomeTypeName = agreement.details?.incomeTypeName ?? sourceAgreement?.incomeTypeName;
   const isAssetRental = isAssetRentalIncomeType([], incomeTypeId, incomeTypeName);
@@ -60,6 +69,19 @@ export default function CommercialStructureStep({
         mb={0}
       />
 
+      {revisionMode && requiresNewCommercials && (
+        <Alert severity="warning">
+          Because the agreement dates have changed, you must upload a new commercial structure for this period.
+        </Alert>
+      )}
+
+      {revisionMode && !requiresNewCommercials && (
+        <Alert severity="info">
+          Edit/Renew: Excel uploads parse into memory only. Unchanged commercial subtrees are
+          deep-copied from the source version on Submit for Approval.
+        </Alert>
+      )}
+
       {!persisted && (
         <Alert severity="warning">
           Contract dates must be saved in Step 1 before configuring commercials.
@@ -70,14 +92,25 @@ export default function CommercialStructureStep({
         <>
           <CollapsibleSection
             title="Participating Store Scope (Excel Mapping)"
-            description="Download template, upload store codes, and review mapped outlets."
+            description={revisionMode
+              ? 'Parse store codes into memory (required when dates change).'
+              : 'Download template, upload store codes, and review mapped outlets.'}
             forceExpand={storeScopeHasError}
             hasError={storeScopeHasError}
           >
-            <StoreMappingImporter
-              agreementVersionId={serverAgreementId}
-              fieldError={fieldErrors.storeMappings}
-            />
+            {revisionMode ? (
+              <RevisionStoreMappingSection
+                sourceVersionId={sourceVersionId}
+                storeMappings={commercialData?.storeMappings}
+                parseErrors={commercialData?.storeParseErrors ?? []}
+                onParsed={onUpdateCommercialData}
+              />
+            ) : (
+              <StoreMappingImporter
+                agreementVersionId={serverAgreementId}
+                fieldError={fieldErrors.storeMappings}
+              />
+            )}
           </CollapsibleSection>
 
           <CollapsibleSection
@@ -99,7 +132,7 @@ export default function CommercialStructureStep({
       {persisted && isCommercialContracts && (
         <WizardFieldAnchor field="jbpStructure" error={fieldErrors.jbpStructure || fieldErrors.commercialValue || fieldErrors.flatBaselineFrequency}>
           <CommercialAgreementsJbpSection
-            agreementVersionId={serverAgreementId}
+            agreementVersionId={revisionMode ? null : serverAgreementId}
             commercials={agreement.commercials ?? {}}
             onUpdateCommercials={onUpdateCommercials}
             fieldError={fieldErrors.jbpStructure || fieldErrors.commercialValue || fieldErrors.flatBaselineFrequency}
@@ -107,6 +140,12 @@ export default function CommercialStructureStep({
             onJbpCommitted={handleJbpCommitted}
             onCommercialsAdvance={onCommercialsAdvance}
             initialJbpCommitted={Boolean(agreement.commercials?.jbpCommitted ?? sourceAgreement?.jbpCommitted)}
+            memoryMode={revisionMode}
+            sourceVersionId={sourceVersionId}
+            contractStartDate={agreement.details?.startDate ?? sourceAgreement?.startDate}
+            contractExpiryDate={agreement.details?.expiryDate ?? sourceAgreement?.expiryDate}
+            initialMemoryJbp={commercialData?.jbp}
+            onMemoryJbpReady={onUpdateCommercialData}
           />
         </WizardFieldAnchor>
       )}
@@ -121,7 +160,7 @@ export default function CommercialStructureStep({
           <HybridCommercialFields
             commercials={agreement.commercials ?? {}}
             onUpdate={onUpdateCommercials}
-            serverAgreementId={serverAgreementId}
+            serverAgreementId={revisionMode ? null : serverAgreementId}
             sourceAgreement={sourceAgreement}
             incomeTypeId={incomeTypeId}
             incomeTypeName={incomeTypeName}

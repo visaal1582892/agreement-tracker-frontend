@@ -28,6 +28,10 @@ const notesFieldSx = {
 export default function Step1FoundationalFields({
   agreement,
   onUpdateDetails,
+  identityLocked = false,
+  minStartDate = null,
+  fieldErrors = {},
+  onClearFieldError,
 }) {
   const [incomeTypes, setIncomeTypes] = useState([]);
   const [agreementTypes, setAgreementTypes] = useState([]);
@@ -66,6 +70,7 @@ export default function Step1FoundationalFields({
                 value={resolveSelectValue(details.incomeTypeId, incomeTypes)}
                 label="Income Type *"
                 onChange={(e) => handleIncomeTypeChange(e.target.value)}
+                disabled={identityLocked}
               >
                 {incomeTypes.map((type) => (
                   <MenuItem key={type.id} value={type.id}>{getIncomeTypeDisplayName(type.name)}</MenuItem>
@@ -80,6 +85,7 @@ export default function Step1FoundationalFields({
                 value={resolveSelectValue(details.agreementTypeId, agreementTypes)}
                 label="Agreement Type *"
                 onChange={(e) => onUpdateDetails({ agreementTypeId: e.target.value })}
+                disabled={identityLocked}
               >
                 {agreementTypes.map((type) => (
                   <MenuItem key={type.id} value={type.id}>{type.name}</MenuItem>
@@ -99,7 +105,14 @@ export default function Step1FoundationalFields({
             <DateRangeFields
               startDate={details.startDate}
               expiryDate={details.expiryDate}
-              onChange={(fields) => onUpdateDetails(fields)}
+              onChange={(fields) => {
+                onUpdateDetails(fields);
+                if (fields.startDate !== undefined) onClearFieldError?.('startDate');
+                if (fields.expiryDate !== undefined) onClearFieldError?.('expiryDate');
+              }}
+              minStartDate={minStartDate}
+              startDateError={fieldErrors.startDate}
+              expiryDateError={fieldErrors.expiryDate}
             />
           </Grid>
           <Grid size={12}>

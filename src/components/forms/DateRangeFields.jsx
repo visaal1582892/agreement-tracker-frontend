@@ -136,7 +136,25 @@ const datePickerSlotProps = {
   },
 };
 
-export default function DateRangeFields({ startDate, expiryDate, onChange, disabled = false }) {
+function buildDatePickerSlotProps({ error, helperText }) {
+  return {
+    textField: {
+      ...datePickerSlotProps.textField,
+      error: Boolean(error),
+      helperText: error || undefined,
+    },
+  };
+}
+
+export default function DateRangeFields({
+  startDate,
+  expiryDate,
+  onChange,
+  disabled = false,
+  minStartDate = null,
+  startDateError = null,
+  expiryDateError = null,
+}) {
   const [tenureYears, setTenureYears] = useState('');
   const [tenureMonths, setTenureMonths] = useState('');
   const [tenureDays, setTenureDays] = useState('');
@@ -256,7 +274,11 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
           value={startDate ? dayjs(startDate) : null}
           onChange={handleStartChange}
           disabled={disabled}
-          slotProps={datePickerSlotProps}
+          minDate={minStartDate ? toDay(minStartDate) : undefined}
+          slotProps={buildDatePickerSlotProps({
+            error: startDateError,
+            helperText: startDateError,
+          })}
         />
       </Grid>
 
@@ -317,7 +339,10 @@ export default function DateRangeFields({ startDate, expiryDate, onChange, disab
           onChange={handleExpiryChange}
           minDate={startDate ? toDay(startDate).add(1, 'day') : undefined}
           disabled={disabled}
-          slotProps={datePickerSlotProps}
+          slotProps={buildDatePickerSlotProps({
+            error: expiryDateError,
+            helperText: expiryDateError,
+          })}
         />
       </Grid>
     </Grid>

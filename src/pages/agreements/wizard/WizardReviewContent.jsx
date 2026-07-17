@@ -173,6 +173,7 @@ export default function WizardReviewContent({
   version,
   serverAgreementId,
   slabs: initialSlabs,
+  revisionMode = false,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const [slabs, setSlabs] = useState(initialSlabs ?? []);
@@ -185,21 +186,27 @@ export default function WizardReviewContent({
   const asset = wizardState?.agreement?.asset ?? {};
   const versionAsset = version?.asset ?? {};
   const commercials = wizardState?.agreement?.commercials ?? {};
+  const commercialData = wizardState?.commercialData ?? null;
+  const memoryStoreMappings = Array.isArray(commercialData?.storeMappings)
+    ? commercialData.storeMappings
+    : null;
+  const memoryJbp = commercialData?.jbp?.sheets?.length ? commercialData.jbp : null;
+  // Prefer wizard details over source snapshot for editable fields.
   const financialYearStartMonth = resolveAgreementFinancialYearStartMonth({ commercials, version });
   const productRules = wizardState?.productRules ?? {};
-  const incomeTypeName = version?.incomeTypeName ?? details.incomeTypeName;
+  const incomeTypeName = details.incomeTypeName ?? version?.incomeTypeName;
   const profile = resolveIncomeProfile(incomeTypeName);
   const hybridFlags = deriveHybridFlags(commercials.commercialStructure);
   const enableFlat = commercials.enableFlatBaseline ?? hybridFlags.enableFlatBaseline;
   const enableSlab = commercials.enableSlabIncentives ?? hybridFlags.enableSlabIncentives;
   const isQps = profile === 'AD_HOC';
   const locationLabel = (() => {
-    const geographyMode = version?.geographyMode ?? details.geographyMode;
+    const geographyMode = details.geographyMode ?? version?.geographyMode;
     if (geographyMode === 'ALL') {
       return 'All locations';
     }
-    const states = version?.partnerStates ?? details.partnerStates ?? [];
-    const cities = version?.partnerCities ?? details.partnerCities ?? [];
+    const states = details.partnerStates ?? version?.partnerStates ?? [];
+    const cities = details.partnerCities ?? version?.partnerCities ?? [];
     const stateParts = (states ?? [])
       .map((item) => (item?.code ? `${item.name} (${item.code})` : item?.name))
       .filter(Boolean)
@@ -261,6 +268,10 @@ export default function WizardReviewContent({
       setStoreMappings([]);
       return;
     }
+    if (memoryStoreMappings != null) {
+      setStoreMappings(memoryStoreMappings);
+      return;
+    }
     if (version?.storeMappings?.length) {
       setStoreMappings(version.storeMappings);
       return;
@@ -281,7 +292,7 @@ export default function WizardReviewContent({
     };
     load();
     return () => { cancelled = true; };
-  }, [profile, serverAgreementId, version?.id, version?.storeMappings]);
+  }, [profile, serverAgreementId, version?.id, version?.storeMappings, memoryStoreMappings]);
 
   return (
     <Box>
@@ -292,7 +303,7 @@ export default function WizardReviewContent({
 
         <CollapsibleSection title="Agreement Classification" defaultExpanded sx={REVIEW_SECTION_SX}>
           <ReviewRow label="Income Type" value={getIncomeTypeDisplayName(incomeTypeName)} />
-          <ReviewRow label="Agreement Type" value={version?.agreementTypeName} />
+          <ReviewRow label="Agreement Type" value={details.agreementTypeName || version?.agreementTypeName} />
         </CollapsibleSection>
 
         <CollapsibleSection title="Duration & Notes" defaultExpanded sx={REVIEW_SECTION_SX}>
@@ -454,6 +465,8 @@ export default function WizardReviewContent({
             <JbpReviewShowcase
               agreementVersionId={serverAgreementId ?? version?.id}
               financialYearStartMonth={financialYearStartMonth}
+              memoryStagedWorkbook={memoryJbp}
+              preferMemoryOverFetch={revisionMode}
             />
           </CollapsibleSection>
         )}

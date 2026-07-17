@@ -7,12 +7,26 @@ import JbpMatrixReviewTable from './JbpMatrixReviewTable';
 export default function JbpReviewShowcase({
   agreementVersionId,
   financialYearStartMonth = 4,
+  /** Edit/Renew: prefer in-memory staged workbook over source version fetch. */
+  memoryStagedWorkbook = null,
+  /** When true and no memory workbook, show deep-copy message instead of fetching source. */
+  preferMemoryOverFetch = false,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [stagedWorkbook, setStagedWorkbook] = useState(null);
 
+  const hasMemory = Boolean(memoryStagedWorkbook?.sheets?.length);
+
   useEffect(() => {
+    if (hasMemory) {
+      setStagedWorkbook(memoryStagedWorkbook);
+      return undefined;
+    }
+    if (preferMemoryOverFetch) {
+      setStagedWorkbook(null);
+      return undefined;
+    }
     if (!agreementVersionId) {
       setStagedWorkbook(null);
       return undefined;
@@ -43,7 +57,36 @@ export default function JbpReviewShowcase({
 
     load();
     return () => { cancelled = true; };
-  }, [agreementVersionId, enqueueSnackbar]);
+  }, [
+    agreementVersionId,
+    enqueueSnackbar,
+    hasMemory,
+    memoryStagedWorkbook,
+    preferMemoryOverFetch,
+  ]);
+
+  if (hasMemory) {
+    return (
+      <Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          In-memory JBP upload (replaces source on Submit for Approval).
+        </Typography>
+        <JbpMatrixReviewTable
+          stagedWorkbook={memoryStagedWorkbook}
+          title={null}
+          financialYearStartMonth={financialYearStartMonth}
+        />
+      </Box>
+    );
+  }
+
+  if (preferMemoryOverFetch) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        No new JBP upload in this revision. Source matrix will be deep-copied on submit.
+      </Typography>
+    );
+  }
 
   if (!agreementVersionId) {
     return null;

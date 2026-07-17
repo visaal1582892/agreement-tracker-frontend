@@ -5,6 +5,7 @@ import {
   DialogTitle, DialogContent, DialogActions, Button, TextField,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
+import dayjs from 'dayjs';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { ROUTES } from '../../config/routes';
@@ -19,14 +20,20 @@ import {
 } from '../../utils/agreementReapprovalUtils';
 import {
   buildSanitizedStep1UpdatePayload,
+  buildRevisionSubmitPayload,
   fetchSlabCountForVersion,
   resolveHighestAccessibleStep,
   internalStepFromUrl,
   urlStepFromInternal,
   validateStep1Fields,
+  collectFoundationalStepErrors,
   validateStep2LoopFields,
   validateAgreementDetailsStep,
   validateCommercialStructureStep,
+  validateRenewDates,
+  requiresNewCommercials,
+  hasRequiredCommercialOverride,
+  validateRevisionCommercialOverride,
   collectConfigurationStepErrors,
   collectCommercialStructureStepErrorsAsync,
   getAssetRentalUnmappedStatesWarning,
@@ -102,6 +109,7 @@ export default function AgreementEditPage() {
     updateAgreementDetails,
     updateAgreementAsset,
     updateAgreementCommercials,
+    updateCommercialData,
     reset,
     hydrateFromEdit,
     restoreFromPersisted,
@@ -122,6 +130,9 @@ export default function AgreementEditPage() {
   const [sourceAgreement, setSourceAgreement] = useState(null);
   const [draftAgreementId, setDraftAgreementId] = useState(null);
   const [versionSourceId, setVersionSourceId] = useState(null);
+  const [parentAgreementId, setParentAgreementId] = useState(null);
+  const [baseVersionNumber, setBaseVersionNumber] = useState(null);
+  const [isRenewMode, setIsRenewMode] = useState(false);
 
   const [reapprovalBaseline, setReapprovalBaseline] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -130,12 +141,15 @@ export default function AgreementEditPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [revisionComments, setRevisionComments] = useState('');
+  const [submitError, setSubmitError] = useState(null);
   const [configurationFieldErrors, setConfigurationFieldErrors] = useState({});
   const [commercialFieldErrors, setCommercialFieldErrors] = useState({});
+  const [foundationalFieldErrors, setFoundationalFieldErrors] = useState({});
   const [baselineIncomeTypeId, setBaselineIncomeTypeId] = useState(null);
   const [baselineAgreementTypeId, setBaselineAgreementTypeId] = useState(null);
 
   const isFreshDraftWizard = sourceAgreement?.approvalStatus === 'DRAFT' && !versionSourceId;
+  const isRevisionWizard = Boolean(versionSourceId) && !isFreshDraftWizard;
 
   useEffect(() => {
     if (sourceAgreement?.incomeTypeId != null) {
@@ -170,6 +184,32 @@ export default function AgreementEditPage() {
     enqueueSnackbar,
   ]);
 
+  // Clear stale Excel memory as soon as Income/Agreement Type drifts from baseline.
+  useEffect(() => {
+    if (!isRevisionWizard) return;
+    const currentIncome = state.agreement?.details?.incomeTypeId;
+    const currentAgreementType = state.agreement?.details?.agreementTypeId;
+    if (baselineIncomeTypeId == null && baselineAgreementTypeId == null) return;
+    const incomeChanged = incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncome);
+    const agreementTypeChanged = baselineAgreementTypeId != null
+      && String(baselineAgreementTypeId) !== String(currentAgreementType ?? '');
+    if (!incomeChanged && !agreementTypeChanged) return;
+    updateCommercialData({
+      jbp: null,
+      jbpBlueprint: null,
+      storeMappings: null,
+      jbpParseErrors: [],
+      storeParseErrors: [],
+    });
+  }, [
+    isRevisionWizard,
+    baselineIncomeTypeId,
+    baselineAgreementTypeId,
+    state.agreement?.details?.incomeTypeId,
+    state.agreement?.details?.agreementTypeId,
+    updateCommercialData,
+  ]);
+
   useEffect(() => {
     setMaxReachableStep((prev) => Math.max(prev, state.step));
   }, [state.step]);
@@ -178,9 +218,13 @@ export default function AgreementEditPage() {
     if (!agreementId || hydratedRef.current) return;
     const load = async () => {
       try {
+        const renewMode = searchParams.get('mode') === 'renew';
+        setIsRenewMode(renewMode);
+
         const { data: loaded } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_BY_ID(agreementId));
 
-        if (loaded.approvalStatus === 'DRAFT') {
+        // Create-flow drafts still use step-wise DB saves.
+        if (loaded.approvalStatus === 'DRAFT' && !renewMode) {
           const structure = loaded.commercialStructure;
           const slabCount = resolveStructureType(structure) === 'SLABS'
             ? await fetchSlabCountForVersion(loaded.id)
@@ -188,6 +232,7 @@ export default function AgreementEditPage() {
           persistedSlabCountRef.current = slabCount;
           setSourceAgreement(loaded);
           setDraftAgreementId(loaded.id);
+          setParentAgreementId(loaded.agreementId);
           applyLoadedDraftStep({
             loaded,
             slabCount,
@@ -200,42 +245,85 @@ export default function AgreementEditPage() {
           return;
         }
 
-        setSourceAgreement(loaded);
-        setVersionSourceId(loaded.id);
-        setReapprovalBaseline(buildReapprovalBaseline(
-          loaded,
-          loaded.vendors?.map((vendor) => vendor.vendorId),
-          {
-            manufacturers: loaded.manufacturers?.map((m) => m.id) ?? loaded.manufacturerIds ?? [],
-            divisionRules: loaded.divisionRules ?? [],
-            productRules: loaded.productRules ?? [],
-          },
-        ));
-
         const { data: versions } = await axiosInstance.get(
           ENDPOINTS.AGREEMENT_VERSIONS(loaded.agreementId),
         );
-        const existingDraft = [...versions].reverse().find((v) => v.approvalStatus === 'DRAFT');
 
-        if (existingDraft) {
-          const structure = existingDraft.commercialStructure;
-          const slabCount = resolveStructureType(structure) === 'SLABS'
-            ? await fetchSlabCountForVersion(existingDraft.id)
-            : null;
-          persistedSlabCountRef.current = slabCount;
-          setDraftAgreementId(existingDraft.id);
-          setSourceAgreement(existingDraft);
-          applyLoadedDraftStep({
-            loaded: existingDraft,
-            slabCount,
-            searchParams,
-            setSearchParams,
-            restoreFromPersisted,
-            setMaxReachableStep,
-          });
-        } else {
-          hydrateFromEdit(loaded);
+        const pending = versions.find((v) => v.approvalStatus === 'PENDING_APPROVAL');
+        if (pending) {
+          setLoadError(
+            'Cannot edit or renew while a version is pending approval. Wait for the review to complete.',
+          );
+          return;
         }
+
+        const approvedVersions = versions
+          .filter((v) => v.approvalStatus === 'APPROVED')
+          .sort((a, b) => b.versionNumber - a.versionNumber);
+        const nonDraftVersions = versions
+          .filter((v) => v.approvalStatus !== 'DRAFT')
+          .sort((a, b) => b.versionNumber - a.versionNumber);
+        const latestNonDraft = nonDraftVersions[0] ?? null;
+        const latestApproved = approvedVersions[0] ?? null;
+
+        let hydrateSource = null;
+        if (
+          loaded.approvalStatus === 'REJECTED'
+          && latestNonDraft
+          && loaded.id === latestNonDraft.id
+          && !renewMode
+        ) {
+          hydrateSource = loaded;
+        } else if (latestApproved) {
+          if (latestApproved.id === loaded.id) {
+            hydrateSource = loaded;
+          } else {
+            const { data: approvedFull } = await axiosInstance.get(
+              ENDPOINTS.AGREEMENT_VERSION_BY_ID(latestApproved.id),
+            );
+            hydrateSource = approvedFull;
+          }
+        }
+
+        if (!hydrateSource) {
+          setLoadError('No approved (or revisable) version available to edit or renew.');
+          return;
+        }
+
+        if (renewMode && hydrateSource.approvalStatus !== 'APPROVED') {
+          setLoadError('Only an approved agreement can be renewed.');
+          return;
+        }
+
+        const structure = hydrateSource.commercialStructure;
+        const slabCount = resolveStructureType(structure) === 'SLABS'
+          ? await fetchSlabCountForVersion(hydrateSource.id)
+          : null;
+        persistedSlabCountRef.current = slabCount;
+
+        setSourceAgreement(hydrateSource);
+        setVersionSourceId(hydrateSource.id);
+        setParentAgreementId(hydrateSource.agreementId);
+        setBaseVersionNumber(hydrateSource.versionNumber);
+        setDraftAgreementId(null);
+        setReapprovalBaseline(buildReapprovalBaseline(
+          hydrateSource,
+          hydrateSource.vendors?.map((vendor) => vendor.vendorId),
+          {
+            manufacturers: hydrateSource.manufacturers?.map((m) => m.id) ?? hydrateSource.manufacturerIds ?? [],
+            divisionRules: hydrateSource.divisionRules ?? [],
+            productRules: hydrateSource.productRules ?? [],
+          },
+        ));
+
+        // Renew lands on Foundational Setup (internal 0) where dates live.
+        const startStep = 0;
+        hydrateFromEdit(hydrateSource, { slabCount, renew: renewMode, step: startStep });
+        setMaxReachableStep(startStep);
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('step', String(urlStepFromInternal(startStep)));
+        if (renewMode) nextParams.set('mode', 'renew');
+        setSearchParams(nextParams, { replace: true });
         hydratedRef.current = true;
       } catch (err) {
         const msg = err.response?.data?.message || 'Failed to load agreement for editing';
@@ -250,7 +338,7 @@ export default function AgreementEditPage() {
     agreement?.agreementId ?? agreement?.id ?? agreementId
   ), [agreementId, sourceAgreement]);
 
-  const applyWizardStep = useCallback((internalStep, id = draftAgreementId) => {
+  const applyWizardStep = useCallback((internalStep, id = draftAgreementId ?? versionSourceId ?? agreementId) => {
     if (!id || internalStep == null) return;
     const stepKey = getAgreementStepKey(sourceAgreement);
     updateStep(internalStep);
@@ -258,12 +346,23 @@ export default function AgreementEditPage() {
     setMaxReachableStep((prev) => Math.max(prev, internalStep));
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('step', String(urlStepFromInternal(internalStep)));
+    if (isRenewMode) nextParams.set('mode', 'renew');
     setSearchParams(nextParams, { replace: true });
-  }, [draftAgreementId, getAgreementStepKey, searchParams, setSearchParams, sourceAgreement, updateStep]);
+  }, [
+    agreementId,
+    draftAgreementId,
+    getAgreementStepKey,
+    isRenewMode,
+    searchParams,
+    setSearchParams,
+    sourceAgreement,
+    updateStep,
+    versionSourceId,
+  ]);
 
-  const syncStepToUrl = useCallback((internalStep, id = draftAgreementId) => {
+  const syncStepToUrl = useCallback((internalStep, id = draftAgreementId ?? versionSourceId ?? agreementId) => {
     applyWizardStep(internalStep, id);
-  }, [applyWizardStep, draftAgreementId]);
+  }, [applyWizardStep, agreementId, draftAgreementId, versionSourceId]);
 
   const urlStepParam = searchParams.get('step');
 
@@ -275,7 +374,14 @@ export default function AgreementEditPage() {
     if (requested == null) return;
 
     if (!isFreshDraftWizard) {
-      updateStep(requested);
+      const clamped = Math.min(requested, maxReachableStep);
+      if (clamped !== requested) {
+        applyWizardStep(clamped);
+        return;
+      }
+      if (stateRef.current.step !== clamped) {
+        updateStep(clamped);
+      }
       return;
     }
 
@@ -296,10 +402,15 @@ export default function AgreementEditPage() {
     urlStepParam,
     sourceAgreement?.id,
     isFreshDraftWizard,
+    maxReachableStep,
     applyWizardStep,
     getAgreementStepKey,
     updateStep,
   ]);
+
+  useEffect(() => {
+    if (state.step !== 0) setFoundationalFieldErrors({});
+  }, [state.step]);
 
   useEffect(() => {
     if (state.step !== 1) setConfigurationFieldErrors({});
@@ -308,6 +419,15 @@ export default function AgreementEditPage() {
   useEffect(() => {
     if (state.step !== 2) setCommercialFieldErrors({});
   }, [state.step]);
+
+  const clearFoundationalFieldError = useCallback((field) => {
+    setFoundationalFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }, []);
 
   const clearConfigurationFieldError = useCallback((field) => {
     setConfigurationFieldErrors((prev) => {
@@ -592,48 +712,48 @@ export default function AgreementEditPage() {
 
   const handleRevisionNext = async () => {
     if (state.step === 0) {
-      if (!validateStep1Fields(state, enqueueSnackbar)) return;
-      setSavingDraft(true);
-      try {
-        await persistDraft({ validateStep1: true });
-        syncStepToUrl(1);
-      } catch (err) {
-        enqueueSnackbar(err.response?.data?.message || 'Complete required step 1 fields', { variant: 'error' });
-      } finally {
-        setSavingDraft(false);
-      }
+      const renewOptions = {
+        renew: isRenewMode,
+        sourceExpiryDate: sourceAgreement?.expiryDate,
+      };
+      const stepErrors = collectFoundationalStepErrors(state, renewOptions);
+      setFoundationalFieldErrors(stepErrors);
+      if (!validateStep1Fields(state, enqueueSnackbar, renewOptions)) return;
+      maybeSanitizeClassificationChange();
+      setBaselineIncomeTypeId(state.agreement?.details?.incomeTypeId);
+      setBaselineAgreementTypeId(state.agreement?.details?.agreementTypeId);
+      setFoundationalFieldErrors({});
+      syncStepToUrl(1);
       return;
     }
     if (state.step === 1) {
       if (!validateAgreementDetailsStep(state, enqueueSnackbar, [], sourceAgreement)) return;
-      setSavingDraft(true);
-      try {
-        await persistDraft({ validateStep2: true });
-        syncStepToUrl(2);
-      } catch (err) {
-        enqueueSnackbar(err.response?.data?.message || 'Complete required contract details', { variant: 'error' });
-      } finally {
-        setSavingDraft(false);
-      }
+      syncStepToUrl(2);
       return;
     }
     if (state.step === 2) {
+      // Phase 2: header validation + optional in-memory commercialData.
+      // Child Excel data validated by parse APIs; source deep-copy covers missing subtrees.
       if (!await validateCommercialStructureStep(
         state,
         enqueueSnackbar,
         [],
         sourceAgreement,
-        draftAgreementId,
+        isRevisionWizard ? null : versionSourceId,
       )) return;
-      setSavingDraft(true);
-      try {
-        await persistDraft({ validateCommercialStructure: true });
-        syncStepToUrl(3);
-      } catch (err) {
-        enqueueSnackbar(err.response?.data?.message || 'Complete required commercial fields', { variant: 'error' });
-      } finally {
-        setSavingDraft(false);
+      if (isRevisionWizard && state.commercialData?.jbpParseErrors?.length) {
+        enqueueSnackbar('Fix JBP parse errors before continuing', { variant: 'warning' });
+        return;
       }
+      if (isRevisionWizard && state.commercialData?.storeParseErrors?.length) {
+        enqueueSnackbar('Fix store mapping parse errors before continuing', { variant: 'warning' });
+        return;
+      }
+      if (!validateRevisionCommercialOverride(state, enqueueSnackbar, {
+        isRenewMode,
+        sourceAgreement,
+      })) return;
+      syncStepToUrl(3);
       return;
     }
     syncStepToUrl(state.step + 1);
@@ -642,6 +762,14 @@ export default function AgreementEditPage() {
   const handleBack = () => {
     if (state.step === 0) return;
     const previousStep = state.step - 1;
+    if (isRevisionWizard) {
+      updateStep(previousStep);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('step', String(urlStepFromInternal(previousStep)));
+      if (isRenewMode) nextParams.set('mode', 'renew');
+      setSearchParams(nextParams, { replace: true });
+      return;
+    }
     discardUnsavedWizardStep(previousStep);
     if (draftAgreementId) {
       const nextParams = new URLSearchParams(searchParams);
@@ -651,8 +779,21 @@ export default function AgreementEditPage() {
   };
 
   const handleSubmitForApproval = async () => {
-    if (versionSourceId) {
+    if (isRevisionWizard) {
       if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
+      if (state.commercialData?.jbpParseErrors?.length) {
+        enqueueSnackbar('Fix JBP parse errors before submitting', { variant: 'warning' });
+        return;
+      }
+      if (state.commercialData?.storeParseErrors?.length) {
+        enqueueSnackbar('Fix store mapping parse errors before submitting', { variant: 'warning' });
+        return;
+      }
+      if (!validateRevisionCommercialOverride(state, enqueueSnackbar, {
+        isRenewMode,
+        sourceAgreement,
+      })) return;
+      setSubmitError(null);
       setSubmitModalOpen(true);
       return;
     }
@@ -713,28 +854,79 @@ export default function AgreementEditPage() {
   };
 
   const handleSubmitConfirm = async () => {
-    if (!revisionComments.trim()) return;
-    setSubmitModalOpen(false);
+    if (!revisionComments.trim() || submitting) return;
+    setSubmitError(null);
+    if (isRenewMode && !validateRenewDates(state, enqueueSnackbar, sourceAgreement?.expiryDate)) {
+      return;
+    }
     setSubmitting(true);
     try {
+      if (isRevisionWizard) {
+        if (baseVersionNumber == null || !parentAgreementId) {
+          throw new Error('Missing base version for revision submit');
+        }
+        const payload = buildRevisionSubmitPayload(state, {
+          baseVersionNumber,
+          comments: revisionComments,
+          sourceAgreement,
+        });
+        const endpoint = isRenewMode
+          ? ENDPOINTS.AGREEMENT_RENEW_SUBMIT(parentAgreementId)
+          : ENDPOINTS.AGREEMENT_EDIT_SUBMIT(parentAgreementId);
+        const { data } = await axiosInstance.post(endpoint, payload);
+        setSubmitModalOpen(false);
+        setRevisionComments('');
+        setSubmitError(null);
+        enqueueSnackbar(
+          'Agreement version successfully submitted for approval',
+          { variant: 'success' },
+        );
+        reset();
+        navigate(buildAgreementDetailPath(data.agreementId ?? parentAgreementId));
+        return;
+      }
+
       const data = await persistDraft();
       const targetId = data.id ?? draftAgreementId;
       await axiosInstance.put(ENDPOINTS.AGREEMENT_VERSION_SUBMIT(targetId), {
         comments: revisionComments.trim(),
       });
-      enqueueSnackbar(`Version V${data.versionNumber} submitted for approval`, { variant: 'success' });
+      setSubmitModalOpen(false);
       setRevisionComments('');
+      enqueueSnackbar(`Version V${data.versionNumber} submitted for approval`, { variant: 'success' });
       reset();
       navigate(buildAgreementDetailPath(data.agreementId));
     } catch (err) {
-      enqueueSnackbar(err.response?.data?.message || 'Failed to submit edited version', { variant: 'error' });
+      const status = err.response?.status;
+      const apiMessage = err.response?.data?.message;
+      let message;
+      if (status === 409) {
+        message = 'Conflict: Another user has already updated this agreement. '
+          + 'Please copy any needed data and refresh the page to see the latest version.';
+      } else {
+        message = apiMessage || err.message || 'Failed to submit edited version';
+      }
+      setSubmitError(message);
+      enqueueSnackbar(message, {
+        variant: 'error',
+        persist: status === 409,
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleCancelWizard = () => {
+    reset();
+    navigate(
+      parentAgreementId || sourceAgreement?.agreementId
+        ? buildAgreementDetailPath(parentAgreementId || sourceAgreement.agreementId)
+        : ROUTES.AGREEMENTS,
+    );
+  };
+
   const footerMode = (() => {
-    if (!isFreshDraftWizard) {
+    if (isRevisionWizard) {
       if (state.step === 3) return 'review';
       return 'revision';
     }
@@ -750,12 +942,23 @@ export default function AgreementEditPage() {
 
   const submitButtonLabel = isFreshDraftWizard ? 'Submit & Exit' : 'Submit for Approval';
 
+  const needsNewCommercials = isRevisionWizard
+    && requiresNewCommercials(isRenewMode, state, sourceAgreement);
+  const commercialOverrideReady = hasRequiredCommercialOverride(state, sourceAgreement);
+  const commercialGateBlocked = needsNewCommercials && !commercialOverrideReady;
+
   const STEP_COMPONENTS = [
     <Step1Setup
       state={state}
       updateFields={updateFields}
       updateAgreementDetails={updateAgreementDetails}
-      groupFieldsLocked={Boolean(draftAgreementId)}
+      groupFieldsLocked={Boolean(draftAgreementId) || isRevisionWizard}
+      identityLocked={isRenewMode}
+      minStartDate={isRenewMode && sourceAgreement?.expiryDate
+        ? dayjs(sourceAgreement.expiryDate).add(1, 'day').format('YYYY-MM-DD')
+        : null}
+      fieldErrors={foundationalFieldErrors}
+      onClearFieldError={clearFoundationalFieldError}
     />,
     <ConfigurationStep
       state={state}
@@ -767,17 +970,28 @@ export default function AgreementEditPage() {
       updateFields={updateFields}
       fieldErrors={configurationFieldErrors}
       onClearFieldError={clearConfigurationFieldError}
+      vendorsLocked={isRenewMode}
     />,
     <CommercialStructureStep
       agreement={state.agreement}
       onUpdateCommercials={updateAgreementCommercials}
       onUpdateAsset={updateAgreementAsset}
-      serverAgreementId={draftAgreementId}
+      serverAgreementId={isRevisionWizard ? versionSourceId : draftAgreementId}
       sourceAgreement={sourceAgreement}
       onCommercialsAdvance={isFreshDraftWizard ? handleCommercialsNext : handleRevisionNext}
       fieldErrors={commercialFieldErrors}
+      revisionMode={isRevisionWizard}
+      sourceVersionId={versionSourceId}
+      commercialData={state.commercialData}
+      onUpdateCommercialData={updateCommercialData}
+      requiresNewCommercials={needsNewCommercials}
     />,
-    <Step5Review state={state} serverAgreementId={draftAgreementId} sourceAgreement={sourceAgreement} />,
+    <Step5Review
+      state={state}
+      serverAgreementId={isRevisionWizard ? versionSourceId : draftAgreementId}
+      sourceAgreement={sourceAgreement}
+      revisionMode={isRevisionWizard}
+    />,
   ];
 
   if (loadError) {
@@ -806,21 +1020,19 @@ export default function AgreementEditPage() {
         footerMode={footerMode}
         onNext={isFreshDraftWizard ? handleSetupNext : handleRevisionNext}
         onBack={handleBack}
-        onCancel={() => navigate(
-          sourceAgreement.agreementId
-            ? buildAgreementDetailPath(sourceAgreement.agreementId)
-            : ROUTES.AGREEMENTS,
-        )}
+        onCancel={handleCancelWizard}
         onSaveAndCreateAnother={isFreshDraftWizard && state.step === 3 ? handleSaveAndCreateAnother : undefined}
         saveAndCreateAnotherDisabled={!canSaveAndCreateAnother}
         saveAndCreateAnotherDisabledReason="Complete steps 1–3 (foundational data) before creating another agreement."
         onDetailsNext={isFreshDraftWizard ? handleDetailsNext : undefined}
         onCommercialsNext={isFreshDraftWizard ? handleCommercialsNext : undefined}
-        onFinishAndExit={handleFinishAndExit}
+        onFinishAndExit={isRevisionWizard ? undefined : handleFinishAndExit}
         onSubmitForApproval={handleSubmitForApproval}
         isSavingDraft={savingDraft}
         isSavingLoop={savingLoop}
         isSubmitting={submitting}
+        nextDisabled={state.step === 2 && commercialGateBlocked}
+        submitDisabled={commercialGateBlocked}
       >
         {STEP_COMPONENTS[state.step]}
       </WizardLayout>
@@ -828,8 +1040,9 @@ export default function AgreementEditPage() {
       <Dialog
         open={submitModalOpen}
         onClose={() => {
+          if (submitting) return;
           setSubmitModalOpen(false);
-          setRevisionComments('');
+          setSubmitError(null);
         }}
         maxWidth="sm"
         fullWidth
@@ -837,25 +1050,35 @@ export default function AgreementEditPage() {
         <DialogTitle fontWeight={700}>Submit for Approval</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2, mt: 1 }}>
-            Explain why this edit or revision is being submitted. Approvers will see your reason in the timeline.
+            {isRenewMode
+              ? 'Explain why this renewal is being submitted. Approvers will see your reason in the timeline.'
+              : 'Explain why this edit or revision is being submitted. Approvers will see your reason in the timeline.'}
           </Alert>
+          {submitError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {submitError}
+            </Alert>
+          )}
           <TextField
-            label="Reason for Edit / Revision *"
+            label={isRenewMode ? 'Reason for Renewal *' : 'Reason for Edit / Revision *'}
             multiline
             rows={4}
             fullWidth
             value={revisionComments}
             onChange={(e) => setRevisionComments(e.target.value)}
             placeholder="Describe what changed and why…"
+            disabled={submitting}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button
             onClick={() => {
+              if (submitting) return;
               setSubmitModalOpen(false);
-              setRevisionComments('');
+              setSubmitError(null);
             }}
             variant="outlined"
+            disabled={submitting}
           >
             Cancel
           </Button>
@@ -864,6 +1087,7 @@ export default function AgreementEditPage() {
             variant="contained"
             sx={{ bgcolor: BRAND.red }}
             disabled={!revisionComments.trim() || submitting}
+            startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : null}
           >
             {submitting ? 'Submitting…' : 'Confirm Submit'}
           </Button>

@@ -18,9 +18,12 @@ const STATUS_CONFIG = {
   REJECTED:         { label: 'Rejected',          bg: '#FEE2E2', color: '#B91C1C', dot: '#EF4444' },
 };
 
-export default function StatusBadge({ status, size = 'small' }) {
+export default function StatusBadge({ status, terminalStatus = null, size = 'small' }) {
   const cfg = STATUS_CONFIG[status] || { label: status || '—', bg: '#F1F5F9', color: '#64748B', dot: '#94A3B8' };
   const isSmall = size === 'small';
+  const label = status === 'SUPERSEDED' && terminalStatus
+    ? `${cfg.label} (${terminalStatus})`
+    : cfg.label;
 
   return (
     <Box sx={{
@@ -38,7 +41,7 @@ export default function StatusBadge({ status, size = 'small' }) {
         fontWeight: 600, color: cfg.color, lineHeight: 1,
         whiteSpace: 'nowrap',
       }}>
-        {cfg.label}
+        {label}
       </Typography>
     </Box>
   );

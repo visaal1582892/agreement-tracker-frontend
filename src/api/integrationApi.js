@@ -52,8 +52,11 @@ export const integrationApi = {
       params: { q, countryCode },
     }),
 
-  searchCities: (stateCode, q) =>
+  searchCities: (stateCode, q = '') =>
     axiosInstance.get(ENDPOINTS.INTEGRATION_LOCATION_CITIES, {
-      params: { stateCode, q },
+      params: {
+        stateCode,
+        ...(q != null && String(q).trim() !== '' ? { q: String(q).trim() } : {}),
+      },
     }),
 };

@@ -79,6 +79,10 @@ export default function HybridCommercialFields({
   incomeTypeName,
   lockOneTimeFrequency = false,
   fieldErrors = {},
+  /** Skip outer CollapsibleSection (parent already wraps). */
+  embedded = false,
+  /** CC Edit/Renew: structure + flat only; SLAB uses external Excel (RevisionJbpSection). */
+  excelSlabsOnly = false,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const structureType = resolveStructureType(commercials.commercialStructure);
@@ -575,17 +579,8 @@ export default function HybridCommercialFields({
     </>
   );
 
-  return (
-    <CollapsibleSection
-      title="Commercial Terms & Incentive Structure"
-      description={
-        lockOneTimeFrequency
-          ? 'Choose flat payout or slab-based incentive. QPS agreements lock payout frequency to One-Time.'
-          : 'Choose flat payout or slab-based incentive.'
-      }
-      forceExpand={sectionHasError}
-      hasError={sectionHasError}
-    >
+  const fields = (
+    <>
       {isLegacyHybrid && (
         <Alert severity="warning" sx={{ mb: 2 }} data-wizard-field="commercialComponent" className="has-error">
           Legacy hybrid structure detected. Select Flat Baseline Payout or Slab-Based Incentive to continue.
@@ -615,7 +610,7 @@ export default function HybridCommercialFields({
           <FormControlLabel
             value="SLABS"
             control={<Radio size="small" />}
-            label="Slab-Based Incentive"
+            label={excelSlabsOnly ? 'Slab-Based Complex Incentive (JBP)' : 'Slab-Based Incentive'}
           />
         </RadioGroup>
       </FormControl>
@@ -656,7 +651,11 @@ export default function HybridCommercialFields({
       )}
 
       <Box sx={{ display: isFlat ? 'none' : 'block' }}>
-        {isCommercialContracts && isSlabs ? (
+        {excelSlabsOnly && isSlabs ? (
+          <Alert severity="info">
+            Slab-based JBP targets upload via Excel section below (memory-only for Edit/Renew).
+          </Alert>
+        ) : isCommercialContracts && isSlabs ? (
           <CommercialContactsCutoffSection
             agreementVersionId={cutoffVersionId}
             slabs={slabs}
@@ -675,6 +674,25 @@ export default function HybridCommercialFields({
           </WizardFieldAnchor>
         )}
       </Box>
+    </>
+  );
+
+  if (embedded) {
+    return fields;
+  }
+
+  return (
+    <CollapsibleSection
+      title="Commercial Terms & Incentive Structure"
+      description={
+        lockOneTimeFrequency
+          ? 'Choose flat payout or slab-based incentive. QPS agreements lock payout frequency to One-Time.'
+          : 'Choose flat payout or slab-based incentive.'
+      }
+      forceExpand={sectionHasError}
+      hasError={sectionHasError}
+    >
+      {fields}
     </CollapsibleSection>
   );
 }

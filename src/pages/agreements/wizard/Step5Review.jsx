@@ -1,7 +1,7 @@
 import { Box, Typography } from '@mui/material';
 import WizardReviewContent from './WizardReviewContent';
 
-export default function Step5Review({ state, serverAgreementId, sourceAgreement }) {
+export default function Step5Review({ state, serverAgreementId, sourceAgreement, revisionMode = false }) {
   if (!state?.agreement) {
     return null;
   }
@@ -17,6 +17,7 @@ export default function Step5Review({ state, serverAgreementId, sourceAgreement 
         wizardState={state}
         version={sourceAgreement}
         serverAgreementId={serverAgreementId}
+        revisionMode={revisionMode}
       />
     </Box>
   );

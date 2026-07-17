@@ -49,6 +49,11 @@ import {
   uploadJbpWorkbook,
 } from '../../../api/jbpApi';
 import {
+  fetchJbpPreviewTimePeriods,
+  generateJbpPreviewTemplate,
+  parseJbpWorkbook,
+} from '../../../api/revisionCommercialApi';
+import {
   FINANCIAL_YEAR_START_MONTH_OPTIONS,
   JBP_FREQUENCY_OPTIONS,
   createJbpConfig,
@@ -68,6 +73,13 @@ export default function CommercialAgreementsJbpSection({
   onJbpCommitted,
   onCommercialsAdvance,
   initialJbpCommitted = false,
+  /** Edit/Renew: configure slots + Excel in memory (no DRAFT writes). */
+  memoryMode = false,
+  sourceVersionId = null,
+  contractStartDate = null,
+  contractExpiryDate = null,
+  onMemoryJbpReady = null,
+  initialMemoryJbp = null,
 }) {
   const { enqueueSnackbar } = useSnackbar();
   const fileInputRef = useRef(null);
@@ -83,12 +95,16 @@ export default function CommercialAgreementsJbpSection({
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [committing, setCommitting] = useState(false);
-  const [stagedWorkbook, setStagedWorkbook] = useState(null);
+  const [stagedWorkbook, setStagedWorkbook] = useState(() => (
+    memoryMode && initialMemoryJbp?.sheets?.length ? initialMemoryJbp : null
+  ));
   const [dragOver, setDragOver] = useState(false);
   const [hydratingStructure, setHydratingStructure] = useState(false);
   const [purgingStructure, setPurgingStructure] = useState(false);
   const [pendingFinancialYearStartMonth, setPendingFinancialYearStartMonth] = useState(null);
   const hydrationAttemptedRef = useRef(false);
+
+  const structureVersionId = memoryMode ? sourceVersionId : agreementVersionId;
 
   const masterFrequency = useMemo(
     () => resolveMasterFrequency(selectedFrequencies),
@@ -119,9 +135,17 @@ export default function CommercialAgreementsJbpSection({
     clearJbpConfigurationState();
     onJbpCommitted?.(false);
     onUpdateCommercials?.({ jbpCommitted: false });
-  }, [clearJbpConfigurationState, onJbpCommitted, onUpdateCommercials]);
+    if (memoryMode) {
+      onMemoryJbpReady?.({ jbp: null, jbpBlueprint: null, jbpParseErrors: [] });
+    }
+  }, [clearJbpConfigurationState, onJbpCommitted, onUpdateCommercials, memoryMode, onMemoryJbpReady]);
 
   const purgeJbpStructure = useCallback(async () => {
+    if (memoryMode) {
+      resetJbpLocalState();
+      enqueueSnackbar('JBP structure reset for new financial year baseline', { variant: 'info' });
+      return;
+    }
     if (!agreementVersionId) return;
     setPurgingStructure(true);
     try {
@@ -134,15 +158,50 @@ export default function CommercialAgreementsJbpSection({
     } finally {
       setPurgingStructure(false);
     }
-  }, [agreementVersionId, enqueueSnackbar, resetJbpLocalState]);
+  }, [agreementVersionId, enqueueSnackbar, resetJbpLocalState, memoryMode]);
 
   useEffect(() => {
     if (!isFlat || commercials.flatBaselineFrequency) return;
     onUpdateCommercials?.({ flatBaselineFrequency: PAYOUT_FREQUENCY.MONTHLY });
   }, [isFlat, commercials.flatBaselineFrequency, onUpdateCommercials]);
 
+  const buildBlueprintPayload = useCallback(() => ({
+    selectedFrequencies,
+    financialYearStartMonth,
+    configurations: configurations.map((config) => ({
+      configId: String(config.id),
+      parentPeriodIds: config.parentPeriodIds,
+      slabCount: Number(config.slabCount),
+    })),
+  }), [selectedFrequencies, financialYearStartMonth, configurations]);
+
   const loadParentPeriods = useCallback(async () => {
-    if (!agreementVersionId || !masterFrequency) {
+    if (!masterFrequency) {
+      setParentPeriodOptions([]);
+      return;
+    }
+    if (memoryMode) {
+      if (!sourceVersionId || !contractStartDate || !contractExpiryDate) {
+        setParentPeriodOptions([]);
+        return;
+      }
+      setLoadingPeriods(true);
+      try {
+        const data = await fetchJbpPreviewTimePeriods(sourceVersionId, masterFrequency, {
+          startDate: contractStartDate,
+          expiryDate: contractExpiryDate,
+          financialYearStartMonth,
+        });
+        setParentPeriodOptions(Array.isArray(data) ? data : []);
+      } catch (err) {
+        enqueueSnackbar(await extractApiErrorMessage(err, 'Failed to load time periods'), { variant: 'error' });
+        setParentPeriodOptions([]);
+      } finally {
+        setLoadingPeriods(false);
+      }
+      return;
+    }
+    if (!agreementVersionId) {
       setParentPeriodOptions([]);
       return;
     }
@@ -160,26 +219,39 @@ export default function CommercialAgreementsJbpSection({
     } finally {
       setLoadingPeriods(false);
     }
-  }, [agreementVersionId, masterFrequency, financialYearStartMonth, enqueueSnackbar]);
+  }, [
+    agreementVersionId,
+    masterFrequency,
+    financialYearStartMonth,
+    enqueueSnackbar,
+    memoryMode,
+    sourceVersionId,
+    contractStartDate,
+    contractExpiryDate,
+  ]);
 
   useEffect(() => {
     loadParentPeriods();
   }, [loadParentPeriods, financialYearStartMonth]);
 
   useEffect(() => {
-    if (!isSlabs || !agreementVersionId) return undefined;
+    if (!isSlabs || !structureVersionId) return undefined;
     hydrationAttemptedRef.current = false;
-  }, [agreementVersionId, isSlabs]);
+  }, [structureVersionId, isSlabs]);
 
   useEffect(() => {
-    if (!isSlabs || !agreementVersionId || hydrationAttemptedRef.current) return undefined;
+    if (!isSlabs || !structureVersionId || hydrationAttemptedRef.current) return undefined;
+    if (memoryMode && initialMemoryJbp?.sheets?.length) {
+      hydrationAttemptedRef.current = true;
+      return undefined;
+    }
 
     let cancelled = false;
     const hydrate = async () => {
       hydrationAttemptedRef.current = true;
       setHydratingStructure(true);
       try {
-        const data = await fetchJbpStructure(agreementVersionId);
+        const data = await fetchJbpStructure(structureVersionId);
         if (cancelled || !data) return;
 
         if (data.frequencies?.length) {
@@ -189,7 +261,7 @@ export default function CommercialAgreementsJbpSection({
         if (mappedConfigs?.length) {
           setConfigurations(mappedConfigs);
         }
-        if (data.stagedWorkbook?.sheets?.length) {
+        if (!memoryMode && data.stagedWorkbook?.sheets?.length) {
           setStagedWorkbook(data.stagedWorkbook);
           onJbpCommitted?.(true);
         }
@@ -207,7 +279,7 @@ export default function CommercialAgreementsJbpSection({
 
     hydrate();
     return () => { cancelled = true; };
-  }, [agreementVersionId, isSlabs, enqueueSnackbar, onJbpCommitted]);
+  }, [structureVersionId, isSlabs, enqueueSnackbar, onJbpCommitted, memoryMode, initialMemoryJbp]);
 
   useEffect(() => {
     if (hydratedRef.current || !initialJbpCommitted) return;
@@ -223,7 +295,10 @@ export default function CommercialAgreementsJbpSection({
   };
 
   const handleAddConfiguration = () => {
-    setConfigurations((prev) => [...prev, createJbpConfig(prev.length + 1)]);
+    setConfigurations((prev) => {
+      const nextNumericId = Math.max(0, ...prev.map((c) => Number(c.id) || 0)) + 1;
+      return [...prev, createJbpConfig(nextNumericId)];
+    });
     setStagedWorkbook(null);
   };
 
@@ -263,17 +338,37 @@ export default function CommercialAgreementsJbpSection({
     }
   };
 
-  const buildTemplatePayload = () => ({
-    selectedFrequencies,
-    financialYearStartMonth,
-    configurations: configurations.map((config) => ({
-      configId: config.id,
-      parentPeriodIds: config.parentPeriodIds,
-      slabCount: Number(config.slabCount),
-    })),
-  });
+  const buildTemplatePayload = () => buildBlueprintPayload();
 
   const handleDownloadTemplate = async () => {
+    if (memoryMode) {
+      if (!sourceVersionId || !contractStartDate || !contractExpiryDate) {
+        enqueueSnackbar('Set contract dates in Step 1 before downloading template', { variant: 'warning' });
+        return;
+      }
+      if (!selectedFrequencies.length) {
+        enqueueSnackbar('Select at least one target interval', { variant: 'warning' });
+        return;
+      }
+      if (configurations.some((config) => !config.parentPeriodIds.length || !config.slabCount)) {
+        enqueueSnackbar('Complete all configuration blocks before downloading', { variant: 'warning' });
+        return;
+      }
+      setDownloading(true);
+      try {
+        const blob = await generateJbpPreviewTemplate(sourceVersionId, {
+          startDate: contractStartDate,
+          expiryDate: contractExpiryDate,
+          workbook: buildBlueprintPayload(),
+        });
+        downloadBlob(blob, `jbp-workbook-edit.xlsx`);
+      } catch (err) {
+        enqueueSnackbar(await extractApiErrorMessage(err, 'Failed to download JBP workbook'), { variant: 'error' });
+      } finally {
+        setDownloading(false);
+      }
+      return;
+    }
     if (!agreementVersionId) {
       enqueueSnackbar('Save contract details before downloading template', { variant: 'warning' });
       return;
@@ -302,7 +397,39 @@ export default function CommercialAgreementsJbpSection({
   };
 
   const handleUpload = async (file) => {
-    if (!file || !agreementVersionId) return;
+    if (!file) return;
+    if (memoryMode) {
+      if (!sourceVersionId) return;
+      setUploading(true);
+      try {
+        const data = await parseJbpWorkbook(sourceVersionId, file, buildBlueprintPayload());
+        setStagedWorkbook(data);
+        enqueueSnackbar('Workbook parsed successfully', { variant: 'success' });
+      } catch (err) {
+        if (err?.isJbpValidationError || isJbpValidationErrorBlob(err)) {
+          enqueueSnackbar(
+            'Validation failed. An Excel file with your exact errors has been downloaded.',
+            { variant: 'error' },
+          );
+          onMemoryJbpReady?.({
+            jbp: null,
+            jbpBlueprint: buildBlueprintPayload(),
+            jbpParseErrors: ['Validation failed — see downloaded JBP_Upload_Errors.xlsx'],
+          });
+        } else {
+          enqueueSnackbar(await extractApiErrorMessage(err, 'JBP upload failed'), { variant: 'error' });
+          onMemoryJbpReady?.({
+            jbp: null,
+            jbpBlueprint: buildBlueprintPayload(),
+            jbpParseErrors: Object.values(err?.response?.data?.fieldErrors || {}),
+          });
+        }
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+    if (!agreementVersionId) return;
     setUploading(true);
     try {
       const data = await uploadJbpWorkbook(agreementVersionId, file);
@@ -332,6 +459,9 @@ export default function CommercialAgreementsJbpSection({
         flatBaselineFrequency: PAYOUT_FREQUENCY.MONTHLY,
         jbpCommitted: false,
       });
+      setStagedWorkbook(null);
+      // Drop stale SLAB Excel from memory so submit cannot force SLAB.
+      onMemoryJbpReady?.({ jbp: null, jbpBlueprint: null, jbpParseErrors: [] });
       return;
     }
     onUpdateCommercials?.({
@@ -346,7 +476,43 @@ export default function CommercialAgreementsJbpSection({
   };
 
   const handleConfirmAndAdvance = async () => {
-    if (!stagedWorkbook || !agreementVersionId) return;
+    if (!stagedWorkbook) return;
+    if (memoryMode) {
+      const blueprint = buildBlueprintPayload();
+      onMemoryJbpReady?.({
+        jbp: stagedWorkbook,
+        jbpBlueprint: blueprint,
+        jbpParseErrors: [],
+      });
+      onJbpCommitted?.(true);
+      onUpdateCommercials?.({
+        commercialStructure: 'SLAB',
+        enableFlatBaseline: false,
+        enableSlabIncentives: true,
+        commercialValue: null,
+        flatBaselineFrequency: null,
+        flatValueType: null,
+        jbpCommitted: true,
+        financialYearStartMonth,
+      });
+      enqueueSnackbar('JBP structure saved in memory for Submit for Approval', { variant: 'success' });
+      if (onCommercialsAdvance) {
+        await onCommercialsAdvance({
+          commercialsOverride: {
+            commercialStructure: 'SLAB',
+            enableFlatBaseline: false,
+            enableSlabIncentives: true,
+            commercialValue: null,
+            flatBaselineFrequency: null,
+            flatValueType: null,
+            jbpCommitted: true,
+            financialYearStartMonth,
+          },
+        });
+      }
+      return;
+    }
+    if (!agreementVersionId) return;
     setCommitting(true);
     try {
       await commitJbpStructure(agreementVersionId, stagedWorkbook);
@@ -600,6 +766,9 @@ export default function CommercialAgreementsJbpSection({
             </Box>
           )}
         </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+          Fill at least one slab row. Blank slab rows in the template are ignored on upload.
+        </Typography>
       </Paper>
 
       {stagedWorkbook && (
@@ -620,7 +789,7 @@ export default function CommercialAgreementsJbpSection({
               disabled={committing}
               startIcon={committing ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              Confirm JBP Relational Matrix & Advance
+              Confirm JBP Relational Matrix{memoryMode ? ' (Memory)' : ' & Advance'}
             </Button>
           </Box>
         </Paper>

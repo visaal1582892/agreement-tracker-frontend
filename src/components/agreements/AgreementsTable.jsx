@@ -11,7 +11,6 @@ import { ENDPOINTS } from '../../config/endpoints';
 import { integrationApi } from '../../api/integrationApi';
 import { submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import { useAgreementPermissions } from '../../hooks/useAgreementPermissions';
-import { cloneAgreementOnServer } from '../../utils/agreementClone';
 import {
   buildAgreementDetailPath,
   buildAgreementEditPath,
@@ -48,11 +47,10 @@ function rowToAgreement(row) {
 }
 
 function RowActionsMenu({
-  row, navigate, onSubmit, onClone, onTransfer, onDelete, draftEditMode = 'group',
+  row, navigate, onSubmit, onTransfer, onDelete, draftEditMode = 'group',
 }) {
   const [anchor, setAnchor] = useState(null);
   const submitModal = useModal();
-  const cloneModal = useModal();
   const deleteModal = useModal();
   const { getListRowActions } = useAgreementPermissions();
   const actions = getListRowActions(rowToAgreement(row));
@@ -104,15 +102,6 @@ function RowActionsMenu({
     await onSubmit(row.latestVersionId);
   };
 
-  const handleCloneClick = () => {
-    cloneModal.open();
-  };
-
-  const handleCloneConfirm = () => {
-    cloneModal.close();
-    onClone(row.latestVersionId);
-  };
-
   const handleDeleteConfirm = () => {
     deleteModal.close();
     window.setTimeout(() => onDelete(row), 0);
@@ -159,7 +148,6 @@ function RowActionsMenu({
         )}
         {actions.revise && <MenuItem dense onClick={withStopPropagation(goToEdit)}>Revise & Resubmit</MenuItem>}
         {actions.submit && <MenuItem dense onClick={withStopPropagation(handleSubmitClick)}>Submit for Approval</MenuItem>}
-        {actions.clone && <MenuItem dense onClick={withStopPropagation(handleCloneClick)}>Clone (Copy Products)</MenuItem>}
         {actions.transfer && <MenuItem dense onClick={withStopPropagation(handleTransferClick)}>Transfer Ownership</MenuItem>}
         {row.approvalStatus === 'DRAFT' && (
           <MenuItem dense onClick={withStopPropagation(() => deleteModal.open())}>Delete</MenuItem>
@@ -173,14 +161,6 @@ function RowActionsMenu({
         title="Submit for Approval"
         message="Are you sure you want to submit this agreement for approval? You will no longer be able to edit the details until it is reviewed."
         confirmLabel="Confirm"
-      />
-      <ConfirmDialog
-        open={cloneModal.isOpen}
-        onClose={cloneModal.close}
-        onConfirm={handleCloneConfirm}
-        title="Clone Agreement"
-        message="This will copy the product scope into a new draft. Proceed?"
-        confirmLabel="Proceed"
       />
       <ConfirmDialog
         open={deleteModal.isOpen}
@@ -417,16 +397,6 @@ export default function AgreementsTable({
     }
   }, [dispatch, enqueueSnackbar, onRefresh]);
 
-  const handleClone = useCallback(async (agreementId) => {
-    try {
-      const cloned = await cloneAgreementOnServer(axiosInstance, ENDPOINTS, agreementId);
-      enqueueSnackbar('Product scope copied — complete remaining details', { variant: 'info' });
-      navigate(buildAgreementEditPath(cloned.id, { step: 2 }));
-    } catch {
-      enqueueSnackbar('Failed to clone agreement', { variant: 'error' });
-    }
-  }, [navigate, enqueueSnackbar]);
-
   const handleDelete = useCallback(async (row) => {
     try {
       await axiosInstance.delete(ENDPOINTS.AGREEMENT_DELETE(row.id));
@@ -474,7 +444,6 @@ export default function AgreementsTable({
             row={row}
             navigate={navigate}
             onSubmit={handleSubmit}
-            onClone={handleClone}
             onTransfer={setTransferRow}
             onDelete={handleDelete}
             draftEditMode={draftEditMode}
@@ -482,7 +451,7 @@ export default function AgreementsTable({
         </Box>
       ),
     },
-  ], [columns, navigate, handleSubmit, handleClone, handleDelete, draftEditMode]);
+  ], [columns, navigate, handleSubmit, handleDelete, draftEditMode]);
 
   const handleRowClick = onRowClickProp
     ?? ((row) => navigateToAgreement(row, navigate, { mode: draftEditMode }));

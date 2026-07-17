@@ -18,6 +18,7 @@ import AgreementCreatePage from './pages/agreements/AgreementCreatePage';
 import AgreementGroupWizardPage from './pages/agreements/AgreementGroupWizardPage';
 import AgreementDetailPage from './pages/agreements/AgreementDetailPage';
 import AgreementEditPage from './pages/agreements/AgreementEditPage';
+import CommercialPayoutsPage from './pages/agreements/CommercialPayoutsPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
 import PriceOffsDashboard from './pages/price-offs/PriceOffsDashboard';
 import PriceOffsApprovalHub from './pages/price-offs/PriceOffsApprovalHub';
@@ -76,6 +77,10 @@ export default function App() {
 
                     <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_APPROVE]} />}>
                       <Route path={ROUTES.APPROVALS} element={<ApprovalsPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.COMMERCIAL_PAYOUT_CALCULATE]} />}>
+                      <Route path={ROUTES.COMMERCIAL_PAYOUTS} element={<CommercialPayoutsPage />} />
                     </Route>
 
                     <Route element={<RightRoute rights={[RIGHTS.PRICE_OFF_MANAGE]} />}>

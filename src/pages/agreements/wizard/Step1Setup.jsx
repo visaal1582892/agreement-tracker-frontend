@@ -7,6 +7,10 @@ export default function Step1Setup({
   updateFields,
   updateAgreementDetails,
   groupFieldsLocked = false,
+  identityLocked = false,
+  minStartDate = null,
+  fieldErrors = {},
+  onClearFieldError,
 }) {
   return (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -20,11 +24,15 @@ export default function Step1Setup({
       <Step1GroupSetup
         state={state}
         updateFields={updateFields}
-        groupFieldsLocked={groupFieldsLocked}
+        groupFieldsLocked={groupFieldsLocked || identityLocked}
       />
       <Step1FoundationalFields
         agreement={state.agreement}
         onUpdateDetails={updateAgreementDetails}
+        identityLocked={identityLocked}
+        minStartDate={minStartDate}
+        fieldErrors={fieldErrors}
+        onClearFieldError={onClearFieldError}
       />
     </Box>
   );

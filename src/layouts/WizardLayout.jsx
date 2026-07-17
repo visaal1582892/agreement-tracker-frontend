@@ -1,4 +1,4 @@
-import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha, IconButton, Tooltip } from '@mui/material';
+import { Box, Step, StepLabel, Stepper, Typography, Paper, Button, Chip, Tabs, Tab, alpha, IconButton, Tooltip, CircularProgress } from '@mui/material';
 import { Close } from '@mui/icons-material';
 import { BRAND } from '../config/theme';
 
@@ -43,6 +43,8 @@ export default function WizardLayout({
   isSavingDraft,
   isSubmitting,
   isSavingLoop,
+  nextDisabled = false,
+  submitDisabled = false,
 }) {
   const busy = isSavingDraft || isSubmitting || isSavingLoop;
   const reachableStep = maxReachableStep ?? activeStep;
@@ -338,7 +340,8 @@ export default function WizardLayout({
                 <Button
                   variant="contained"
                   onClick={onSubmitForApproval}
-                  disabled={busy}
+                  disabled={busy || submitDisabled}
+                  startIcon={isSubmitting ? <CircularProgress size={16} color="inherit" /> : null}
                   sx={{
                     borderRadius: 2.5,
                     px: 3,
@@ -360,7 +363,7 @@ export default function WizardLayout({
                   <Button
                     variant="contained"
                     onClick={onNext}
-                    disabled={busy}
+                    disabled={busy || nextDisabled}
                     sx={{
                       borderRadius: 2.5,
                       px: 3,
@@ -378,7 +381,8 @@ export default function WizardLayout({
                   <Button
                     variant="contained"
                     onClick={onSubmitForApproval}
-                    disabled={busy}
+                    disabled={busy || submitDisabled}
+                    startIcon={isSubmitting ? <CircularProgress size={16} color="inherit" /> : null}
                     sx={{
                       borderRadius: 2.5,
                       px: 3,

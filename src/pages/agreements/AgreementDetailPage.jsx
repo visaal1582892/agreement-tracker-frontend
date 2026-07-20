@@ -6,7 +6,7 @@ import {
   FormControl, Stepper, Step, StepLabel, StepContent, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Tabs, Tab,
   List, ListItemButton, ListItemText, Accordion, AccordionSummary, AccordionDetails,
-  Breadcrumbs, Link as MuiLink,
+  Breadcrumbs, Link as MuiLink, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from '@mui/material';
 import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -26,7 +26,9 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import CommercialsUploadModal from './wizard/CommercialsUploadModal';
 import JbpReviewShowcase from './wizard/JbpReviewShowcase';
 import { resolveAgreementFinancialYearStartMonth } from '../../utils/jbpMatrixUtils';
-import { isAssetRentalIncomeType, isCommercialContractsIncomeType } from '../../utils/incomeTypeUtils';
+import { isAssetRentalIncomeType, isCommercialContractsIncomeType, isAdHocIncomeType } from '../../utils/incomeTypeUtils';
+import { CAP_UNIT } from '../../constants/capUnit';
+import { PAYOUT_FREQUENCY_OPTIONS } from '../../constants/commercialStructure';
 import StoreMappingReviewSummary from './wizard/StoreMappingReviewSummary';
 import dayjs from 'dayjs';
 
@@ -46,6 +48,26 @@ function formatAssetPayoutPeriods(periods = []) {
   return periods
     .map((period) => `${period.periodMonths} mo @ ${formatAssetMoney(period.payoutPerStore)}`)
     .join('; ');
+}
+
+function formatCommercialValue(value, valueType) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (valueType === 'PERCENTAGE') return `${value}%`;
+  return `₹${Number(value).toLocaleString('en-IN')}`;
+}
+
+function formatCapValue(value, capUnit) {
+  if (value === null || value === undefined || value === '') return '—';
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return String(value);
+  if (capUnit === CAP_UNIT.QUANTITY) {
+    return numeric.toLocaleString('en-IN');
+  }
+  return `₹${numeric.toLocaleString('en-IN')}`;
+}
+
+function payoutFrequencyLabel(value) {
+  return PAYOUT_FREQUENCY_OPTIONS.find((option) => option.value === value)?.label || value || '—';
 }
 
 function resolveAssetPayoutMode(agreement) {
@@ -331,8 +353,9 @@ export default function AgreementDetailPage({
   const showJbpMatrix = Boolean(
     agreement && isCommercialContracts && (isSlabStructure || agreement.jbpCommitted),
   );
+  const isAdHoc = isAdHocIncomeType([], agreement?.incomeTypeId, agreement?.incomeTypeName);
   const showLegacyTargetsMatrix = Boolean(
-    agreement && !isCommercialContracts && !isAssetRental && isSlabStructure,
+    agreement && !isCommercialContracts && !isAssetRental && !isAdHoc && isSlabStructure,
   );
   const assetPayoutMode = isAssetRental ? resolveAssetPayoutMode(agreement) : null;
   const assetCategory = agreement?.asset?.assetCategory;
@@ -652,15 +675,36 @@ export default function AgreementDetailPage({
                             : '—'}
                       </Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
+                    <Grid size={{ xs: 12, sm: 12, md: 6 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         {assetPayoutMode === 'PER_STORE' ? 'Payout Schedule' : 'Flat Payout Amount'}
                       </Typography>
-                      <Typography variant="body2">
-                        {assetPayoutMode === 'PER_STORE'
-                          ? formatAssetPayoutPeriods(agreement.assetPayoutPeriods)
-                          : formatAssetMoney(agreement.asset?.flatPayout)}
-                      </Typography>
+                      {assetPayoutMode === 'PER_STORE' ? (
+                        (!agreement.assetPayoutPeriods || agreement.assetPayoutPeriods.length === 0) ? (
+                          <Typography variant="body2">—</Typography>
+                        ) : (
+                          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell sx={{ fontWeight: 600 }}>Period</TableCell>
+                                  <TableCell sx={{ fontWeight: 600 }}>Payout (per store)</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {agreement.assetPayoutPeriods.map((period, idx) => (
+                                  <TableRow key={idx}>
+                                    <TableCell>{period.periodMonths} Months</TableCell>
+                                    <TableCell>{formatAssetMoney(period.payoutPerStore)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        )
+                      ) : (
+                        <Typography variant="body2">{formatAssetMoney(agreement.asset?.flatPayout)}</Typography>
+                      )}
                     </Grid>
                     {agreement.asset?.remarks && (
                       <Grid size={12}>
@@ -700,6 +744,51 @@ export default function AgreementDetailPage({
                     expiryDate={agreement.expiryDate}
                     financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
                   />
+                </Paper>
+              )}
+
+              {isAdHoc && isSlabStructure && (
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Details Structure</Typography>
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', mt: 1 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 600 }}>Min Cap</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Max Cap</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Payout</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {slabs.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4}>
+                              <Typography variant="body2" color="text.secondary">
+                                No commercial tiers added.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          slabs.map((slab) => {
+                            const capUnit = slab.capUnit || agreement?.commercials?.slabCapUnit || CAP_UNIT.RUPEES;
+                            return (
+                              <TableRow key={slab.id}>
+                                <TableCell>{formatCapValue(slab.minCap, capUnit)}</TableCell>
+                                <TableCell>{formatCapValue(slab.maxCap, capUnit)}</TableCell>
+                                <TableCell>
+                                  {formatCommercialValue(slab.commercialValue, slab.valueType)}
+                                </TableCell>
+                                <TableCell>
+                                  {payoutFrequencyLabel(slab.payoutFrequency)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
                 </Paper>
               )}
 

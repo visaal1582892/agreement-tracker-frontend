@@ -128,7 +128,8 @@ export default function AgreementEditPage() {
   }, [state]);
 
   const [maxReachableStep, setMaxReachableStep] = useState(0);
-
+  const [pendingStepIndex, setPendingStepIndex] = useState(null);
+  const [isNavWarningOpen, setIsNavWarningOpen] = useState(false);
   const [sourceAgreement, setSourceAgreement] = useState(null);
   const [draftAgreementId, setDraftAgreementId] = useState(null);
   const [versionSourceId, setVersionSourceId] = useState(null);
@@ -607,10 +608,8 @@ export default function AgreementEditPage() {
 
   const handleStepClick = (stepIndex) => {
     if (stepIndex < state.step) {
-      if (stepIndex <= maxReachableStep) {
-        discardUnsavedWizardStep(stepIndex);
-        syncStepToUrl(stepIndex);
-      }
+      setPendingStepIndex(stepIndex);
+      setIsNavWarningOpen(true);
       return;
     }
 
@@ -1036,7 +1035,7 @@ export default function AgreementEditPage() {
       <WizardLayout
         activeStep={state.step}
         maxReachableStep={maxReachableStep}
-        onStepClick={isFreshDraftWizard ? handleStepClick : undefined}
+        onStepClick={handleStepClick}
         agreementTabLabel={agreementTabLabel}
         submitButtonLabel={submitButtonLabel}
         footerMode={footerMode}
@@ -1058,6 +1057,24 @@ export default function AgreementEditPage() {
       >
         {STEP_COMPONENTS[state.step]}
       </WizardLayout>
+
+      <Dialog open={isNavWarningOpen} onClose={() => { setIsNavWarningOpen(false); setPendingStepIndex(null); }}>
+        <DialogTitle>Unsaved Changes</DialogTitle>
+        <DialogContent>
+          Any unsaved changes on the current step will be lost. Do you wish to proceed?
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setIsNavWarningOpen(false); setPendingStepIndex(null); }} color="inherit">Cancel</Button>
+          <Button onClick={() => {
+            if (pendingStepIndex !== null && pendingStepIndex <= maxReachableStep) {
+              discardUnsavedWizardStep(pendingStepIndex);
+              syncStepToUrl(pendingStepIndex);
+            }
+            setIsNavWarningOpen(false);
+            setPendingStepIndex(null);
+          }} variant="contained" color="primary">Proceed</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={submitModalOpen}

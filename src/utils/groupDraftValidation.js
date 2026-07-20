@@ -3,22 +3,42 @@ import { ENDPOINTS } from '../config/endpoints';
 import { fetchSlabs } from '../api/commercialApi';
 import { INCOME_TYPE_NAMES } from '../constants/incomeTypeNames';
 import { resolveStructureType } from '../constants/commercialStructure';
+import { evaluateAssetPayoutDuration } from './assetPayoutDurationUtils';
 
-function getAssetRentalPayoutGaps(asset, assetPayoutPeriods = []) {
+function getAssetRentalPayoutGaps(asset, assetPayoutPeriods = [], version = null) {
   const gaps = [];
   if (!asset?.assetCategory) gaps.push('Asset Category');
   if (asset?.assetCategory !== 'ACTIVITY' && !asset?.assetType) gaps.push('Asset Type');
-  const parsedStoreCount = Number(asset?.storeCount);
-  if (!Number.isInteger(parsedStoreCount) || parsedStoreCount <= 0) gaps.push('Store Count');
   const hasFlatPayout = asset?.flatPayout != null && Number(asset.flatPayout) > 0;
   const hasSchedule = (assetPayoutPeriods ?? []).length > 0;
   if (!hasFlatPayout && !hasSchedule) {
     gaps.push('Asset Payout');
   }
+  if (hasSchedule && !hasFlatPayout) {
+    const durationEval = evaluateAssetPayoutDuration({
+      payoutMode: 'PER_STORE',
+      periods: assetPayoutPeriods,
+      startDate: version?.startDate,
+      expiryDate: version?.expiryDate,
+    });
+    if (durationEval.status === 'error') {
+      gaps.push('Asset Payout Schedule Duration');
+    }
+  }
   return gaps;
 }
 
-export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } = {}) {
+function resolveStoreMappingCount(version, storeMappingCount) {
+  if (Number.isFinite(storeMappingCount) && storeMappingCount > 0) {
+    return storeMappingCount;
+  }
+  if (Array.isArray(version?.storeMappings)) {
+    return version.storeMappings.length;
+  }
+  return Number.isFinite(storeMappingCount) ? storeMappingCount : 0;
+}
+
+export function getDraftDetailsGaps(version, { slabCount = 0, storeMappingCount = 0 } = {}) {
   const gaps = [];
   if (!version?.incomeTypeId) gaps.push('Income Type');
   if (!version?.agreementTypeId) gaps.push('Agreement Type');
@@ -26,8 +46,11 @@ export function getDraftDetailsGaps(version, { slabCount = 0, targetCount = 0 } 
   if (!version?.expiryDate) gaps.push('Expiry Date');
 
   if (version?.incomeTypeName === INCOME_TYPE_NAMES.ASSET_RENTALS) {
-    gaps.push(...getAssetRentalPayoutGaps(version.asset, version.assetPayoutPeriods));
-    if (!version?.invoiceVendorId) gaps.push('Invoice Vendor');
+    gaps.push(...getAssetRentalPayoutGaps(version.asset, version.assetPayoutPeriods, version));
+    // Invoice Vendor UI is currently hidden — do not block completeness on it.
+    if (resolveStoreMappingCount(version, storeMappingCount) <= 0) {
+      gaps.push('Participating Stores');
+    }
     return gaps;
   }
 
@@ -69,8 +92,15 @@ export async function loadGroupDraftReviewData(drafts) {
       slabs = await fetchSlabs(row.latestVersionId);
     }
 
+    // Prefer storeMappings already embedded on the version payload (avoids a second call
+    // that can fail ownership/auth and falsely mark Asset drafts incomplete).
+    const storeMappingCount = Array.isArray(version.storeMappings)
+      ? version.storeMappings.length
+      : 0;
+
     const gaps = getDraftDetailsGaps(version, {
       slabCount: slabs.length,
+      storeMappingCount,
     });
 
     return {
@@ -86,5 +116,9 @@ export async function loadGroupDraftReviewData(drafts) {
 export function incompleteDraftLabels(reviewData) {
   return reviewData
     .filter((item) => !item.isComplete)
-    .map((item) => item.version.agreementName || item.row.agreementName || `Draft #${item.row.id}`);
+    .map((item) => {
+      const name = item.version.agreementName || item.row.agreementName || `Draft #${item.row.id}`;
+      const gapText = (item.gaps ?? []).length ? ` (${item.gaps.join(', ')})` : '';
+      return `${name}${gapText}`;
+    });
 }

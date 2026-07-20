@@ -1,9 +1,10 @@
 import {
-  Box, Button, Grid, IconButton, InputAdornment, Table, TableBody, TableCell,
+  Alert, Box, Button, Grid, IconButton, InputAdornment, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Typography,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
+import { evaluateAssetPayoutDuration } from '../../../utils/assetPayoutDurationUtils';
 
 const EMPTY_PERIOD = { periodMonths: '', payoutPerStore: '' };
 
@@ -11,8 +12,16 @@ export default function AssetPayoutScheduleFields({
   periods = [],
   onChange,
   fieldError,
+  startDate = null,
+  expiryDate = null,
 }) {
   const rows = periods.length > 0 ? periods : [EMPTY_PERIOD];
+  const durationEval = evaluateAssetPayoutDuration({
+    payoutMode: 'PER_STORE',
+    periods: rows,
+    startDate,
+    expiryDate,
+  });
 
   const updateRow = (index, patch) => {
     const next = rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row));
@@ -33,9 +42,24 @@ export default function AssetPayoutScheduleFields({
       <Box>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
           Define payout per store by time period (months).
+          {durationEval.maxAllowedMonths != null && (
+            <> Inclusive agreement duration allows up to {durationEval.maxAllowedMonths} month(s).</>
+          )}
         </Typography>
 
-        <TableContainer sx={{ border: '1px solid', borderColor: 'grey.200', borderRadius: 1, mb: 2 }}>
+        {durationEval.status === 'error' && (
+          <Alert severity="error" sx={{ mb: 1.5 }}>{durationEval.message}</Alert>
+        )}
+        {durationEval.status === 'warn' && (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>{durationEval.message}</Alert>
+        )}
+
+        <TableContainer sx={{
+          border: '1px solid',
+          borderColor: durationEval.status === 'error' ? 'error.main' : 'grey.200',
+          borderRadius: 1,
+          mb: 2,
+        }}>
           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: 'grey.50' }}>

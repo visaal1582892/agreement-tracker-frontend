@@ -33,6 +33,7 @@ export const ENDPOINTS = {
   AGREEMENT_PARSE_STORES: `${BASE}/agreements/parse-stores`,
   AGREEMENT_PARSE_STORES_TEMPLATE: `${BASE}/agreements/parse-stores/template`,
   AGREEMENT_BULK_TRANSFER: `${BASE}/agreements/bulk-transfer`,
+  AGREEMENT_PRODUCT_SCOPE_COUNT: `${BASE}/agreements/product-scope/count`,
 
   // Agreement versions (ex-agreements)
   AGREEMENT_VERSION_BY_ID: (id) => `${BASE}/agreement-versions/${id}`,

@@ -124,6 +124,8 @@ export default function CommercialStructureStep({
               onUpdateAsset={onUpdateAsset}
               hideSectionTitle
               fieldErrors={fieldErrors}
+              startDate={agreement.details?.startDate ?? sourceAgreement?.startDate}
+              expiryDate={agreement.details?.expiryDate ?? sourceAgreement?.expiryDate}
             />
           </CollapsibleSection>
         </>

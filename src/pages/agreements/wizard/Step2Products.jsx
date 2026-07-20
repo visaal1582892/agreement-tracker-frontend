@@ -7,6 +7,7 @@ import {
 import { AccountTreeOutlined } from '@mui/icons-material';
 import { integrationApi, unwrapPaginatedResponse } from '../../../api/integrationApi';
 import {
+  buildApiProductRulesPayload,
   buildExplicitScopeRules,
   normalizeExplicitScopeRules,
 } from '../../../utils/productScopeUtils';
@@ -244,6 +245,10 @@ export default function Step2Products({ state, updateProductRules, info, error }
   const [selectedProductMeta, setSelectedProductMeta] = useState(() => new Map());
   const [productOp, setProductOp] = useState('EXCLUDE');
 
+  const [finalScopeCount, setFinalScopeCount] = useState(0);
+  const [finalScopeCountLoading, setFinalScopeCountLoading] = useState(false);
+  const [finalScopeCountError, setFinalScopeCountError] = useState(null);
+
   const [fetchError, setFetchError] = useState(null);
 
   const hasInitialized = useRef(false);
@@ -320,6 +325,21 @@ export default function Step2Products({ state, updateProductRules, info, error }
     ),
     [selectedProductRuleIds, selectedProductMeta, productOp],
   );
+
+  const scopeCountPayload = useMemo(
+    () => buildApiProductRulesPayload({
+      manufacturers: selectedManufacturerIds,
+      divisionRules: explicitDivisionRules,
+      productRules: explicitProductRules,
+    }),
+    [selectedManufacturerIds, explicitDivisionRules, explicitProductRules],
+  );
+
+  const scopeCountPayloadKey = useMemo(
+    () => JSON.stringify(scopeCountPayload),
+    [scopeCountPayload],
+  );
+  const debouncedScopeCountPayloadKey = useDebounce(scopeCountPayloadKey, 500);
 
   const pinnedProductIdsKey = useMemo(
     () => selectedProductRuleIds.join(','),
@@ -608,6 +628,50 @@ export default function Step2Products({ state, updateProductRules, info, error }
     setProductPage(0);
   }, [debouncedProductRuleSearch, productFilterDivisionKey]);
 
+  useEffect(() => {
+    let payload;
+    try {
+      payload = JSON.parse(debouncedScopeCountPayloadKey);
+    } catch {
+      setFinalScopeCount(0);
+      setFinalScopeCountLoading(false);
+      setFinalScopeCountError(null);
+      return undefined;
+    }
+
+    if (!payload.manufacturers?.length) {
+      setFinalScopeCount(0);
+      setFinalScopeCountLoading(false);
+      setFinalScopeCountError(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setFinalScopeCountLoading(true);
+    setFinalScopeCountError(null);
+
+    integrationApi.countProductScope(payload)
+      .then((response) => {
+        if (cancelled) return;
+        const count = Number(response.data?.count);
+        setFinalScopeCount(Number.isFinite(count) ? count : 0);
+      })
+      .catch((err) => {
+        console.error('Product scope count failed', err);
+        if (!cancelled) {
+          setFinalScopeCountError(
+            err.response?.data?.message || 'Failed to calculate applicable product count.',
+          );
+          setFinalScopeCount(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFinalScopeCountLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [debouncedScopeCountPayloadKey]);
+
   useLayoutEffect(() => {
     if (hasInitialized.current) return;
 
@@ -795,7 +859,17 @@ export default function Step2Products({ state, updateProductRules, info, error }
 
   return (
     <Box>
-      <WizardSectionTitle title="Applicable Products" info={sectionInfo} mb={2} />
+      <WizardSectionTitle title="Applicable Products" info={sectionInfo} mb={1} />
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {finalScopeCountLoading
+          ? 'Calculating final scope…'
+          : `Final scope: ${finalScopeCount} applicable product${finalScopeCount === 1 ? '' : 's'}`}
+      </Typography>
+      {finalScopeCountError && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setFinalScopeCountError(null)}>
+          {finalScopeCountError}
+        </Alert>
+      )}
 
       {fetchError && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFetchError(null)}>{fetchError}</Alert>

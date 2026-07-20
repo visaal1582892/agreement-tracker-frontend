@@ -14,6 +14,8 @@ import { submitAgreementGroupForApproval } from '../../api/agreementGroupApi';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
 import { validateAgreementForSubmit } from '../../utils/agreementSubmitValidation';
+import { isAssetPayoutDurationBlocked } from '../../utils/assetPayoutDurationUtils';
+import { blurActiveElement } from '../../utils/muiDomCompat';
 import {
   buildReapprovalBaseline,
   detectRequiresReapproval,
@@ -386,7 +388,10 @@ export default function AgreementEditPage() {
     }
 
     const currentState = stateRef.current;
-    const maxAccessible = resolveHighestAccessibleStep(currentState, sourceAgreement);
+    const maxAccessible = Math.max(
+      resolveHighestAccessibleStep(currentState, sourceAgreement),
+      maxReachableStep,
+    );
     const clamped = Math.min(requested, maxAccessible);
 
     if (clamped !== requested) {
@@ -401,6 +406,7 @@ export default function AgreementEditPage() {
   }, [
     urlStepParam,
     sourceAgreement?.id,
+    sourceAgreement?.commercialStructure,
     isFreshDraftWizard,
     maxReachableStep,
     applyWizardStep,
@@ -778,7 +784,21 @@ export default function AgreementEditPage() {
     }
   };
 
+  const assetPayoutDurationBlocked = isAssetPayoutDurationBlocked({
+    payoutMode: state.agreement?.asset?.payoutMode,
+    periods: state.agreement?.asset?.assetPayoutPeriods,
+    startDate: state.agreement?.details?.startDate ?? sourceAgreement?.startDate,
+    expiryDate: state.agreement?.details?.expiryDate ?? sourceAgreement?.expiryDate,
+  });
+
   const handleSubmitForApproval = async () => {
+    if (assetPayoutDurationBlocked) {
+      enqueueSnackbar(
+        'Fix Asset payout schedule duration before submitting',
+        { variant: 'error' },
+      );
+      return;
+    }
     if (isRevisionWizard) {
       if (!validateAgreementForSubmit(state, enqueueSnackbar)) return;
       if (state.commercialData?.jbpParseErrors?.length) {
@@ -794,6 +814,7 @@ export default function AgreementEditPage() {
         sourceAgreement,
       })) return;
       setSubmitError(null);
+      blurActiveElement();
       setSubmitModalOpen(true);
       return;
     }
@@ -946,6 +967,7 @@ export default function AgreementEditPage() {
     && requiresNewCommercials(isRenewMode, state, sourceAgreement);
   const commercialOverrideReady = hasRequiredCommercialOverride(state, sourceAgreement);
   const commercialGateBlocked = needsNewCommercials && !commercialOverrideReady;
+  const wizardActionBlocked = commercialGateBlocked || assetPayoutDurationBlocked;
 
   const STEP_COMPONENTS = [
     <Step1Setup
@@ -1031,8 +1053,8 @@ export default function AgreementEditPage() {
         isSavingDraft={savingDraft}
         isSavingLoop={savingLoop}
         isSubmitting={submitting}
-        nextDisabled={state.step === 2 && commercialGateBlocked}
-        submitDisabled={commercialGateBlocked}
+        nextDisabled={(state.step === 2 && commercialGateBlocked) || assetPayoutDurationBlocked}
+        submitDisabled={wizardActionBlocked}
       >
         {STEP_COMPONENTS[state.step]}
       </WizardLayout>

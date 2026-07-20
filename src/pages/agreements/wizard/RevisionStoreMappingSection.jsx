@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, Table, TableBody, TableCell,
   TableHead, TableRow, Typography,
@@ -14,9 +14,21 @@ import {
   extractParseRowErrors,
   parseStoreMappings,
 } from '../../../api/revisionCommercialApi';
+import { fetchStoreMappings } from '../../../api/storeMappingApi';
+
+function normalizeStoreRow(store) {
+  return {
+    storeId: store.storeId,
+    storeCode: store.storeCode,
+    storeName: store.storeName,
+    stateId: store.stateId,
+    stateName: store.stateName,
+  };
+}
 
 /**
  * Edit/Renew store mapping: parse Excel → React state (no DB write).
+ * Shows source version stores as preview when no in-memory override.
  */
 export default function RevisionStoreMappingSection({
   sourceVersionId,
@@ -29,8 +41,46 @@ export default function RevisionStoreMappingSection({
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [sourceStores, setSourceStores] = useState([]);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceLoadError, setSourceLoadError] = useState(null);
 
-  const stores = Array.isArray(storeMappings) ? storeMappings : [];
+  const overrideStores = Array.isArray(storeMappings) ? storeMappings : null;
+  const displayStores = overrideStores ?? sourceStores;
+  const showingSourcePreview = overrideStores == null;
+
+  useEffect(() => {
+    if (!sourceVersionId) {
+      setSourceStores([]);
+      setSourceLoadError(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setSourceLoading(true);
+    setSourceLoadError(null);
+
+    fetchStoreMappings(sourceVersionId)
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data.map(normalizeStoreRow) : [];
+        setSourceStores(list);
+      })
+      .catch((err) => {
+        console.error('Failed to load source store mappings', err);
+        if (!cancelled) {
+          setSourceStores([]);
+          setSourceLoadError(
+            err.response?.data?.message || 'Unable to load previous store mappings',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSourceLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [sourceVersionId]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -49,13 +99,7 @@ export default function RevisionStoreMappingSection({
     setUploading(true);
     try {
       const result = await parseStoreMappings(sourceVersionId, file);
-      const mapped = (result?.successfullyMapped ?? []).map((s) => ({
-        storeId: s.storeId,
-        storeCode: s.storeCode,
-        storeName: s.storeName,
-        stateId: s.stateId,
-        stateName: s.stateName,
-      }));
+      const mapped = (result?.successfullyMapped ?? []).map(normalizeStoreRow);
       const softErrors = (result?.errors ?? []).map(
         (e) => `R${e.row ?? '?'}: ${e.storeCode ?? ''} — ${e.message}`,
       );
@@ -78,6 +122,10 @@ export default function RevisionStoreMappingSection({
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleClearOverride = () => {
+    onParsed?.({ storeMappings: null, storeParseErrors: [] });
   };
 
   return (
@@ -105,6 +153,11 @@ export default function RevisionStoreMappingSection({
         >
           Upload Excel
         </Button>
+        {overrideStores != null && (
+          <Button size="small" variant="text" onClick={handleClearOverride}>
+            Keep source stores
+          </Button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -151,33 +204,51 @@ export default function RevisionStoreMappingSection({
         </Alert>
       )}
 
-      {stores.length > 0 ? (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Store Code</TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>State</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {stores.slice(0, 50).map((s) => (
-              <TableRow key={s.storeId || s.storeCode}>
-                <TableCell>{s.storeCode}</TableCell>
-                <TableCell>{s.storeName}</TableCell>
-                <TableCell>{s.stateName}</TableCell>
+      {sourceLoadError && showingSourcePreview && (
+        <Alert severity="warning">{sourceLoadError}</Alert>
+      )}
+
+      {sourceLoading && showingSourcePreview ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={16} />
+          <Typography variant="body2" color="text.secondary">Loading previous stores…</Typography>
+        </Box>
+      ) : displayStores.length > 0 ? (
+        <>
+          <Typography variant="subtitle2" fontWeight={700}>
+            {showingSourcePreview
+              ? `Previous stores (${displayStores.length}) — kept on submit unless you upload a replacement`
+              : `Replacement stores (${displayStores.length}) — will replace source on submit`}
+          </Typography>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Store Code</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>State</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {displayStores.slice(0, 50).map((s) => (
+                <TableRow key={s.storeId || s.storeCode}>
+                  <TableCell>{s.storeCode}</TableCell>
+                  <TableCell>{s.storeName}</TableCell>
+                  <TableCell>{s.stateName}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {displayStores.length > 50 && (
+            <Typography variant="caption" color="text.secondary">
+              Showing 50 of {displayStores.length} stores
+            </Typography>
+          )}
+        </>
       ) : (
         <Typography variant="body2" color="text.secondary">
-          No in-memory store override — source stores will be deep-copied on submit.
-        </Typography>
-      )}
-      {stores.length > 50 && (
-        <Typography variant="caption" color="text.secondary">
-          Showing 50 of {stores.length} stores
+          {showingSourcePreview
+            ? 'No source stores found on this version.'
+            : 'No in-memory store override — source stores will be deep-copied on submit.'}
         </Typography>
       )}
     </Box>

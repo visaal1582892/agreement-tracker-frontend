@@ -58,6 +58,11 @@ export default function Step5GroupReview({ sharedState, groupDrafts, activeAgree
           <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
             {activeReview.version.agreementName || activeReview.row.agreementName || 'Agreement'}
           </Typography>
+          {!activeReview.isComplete && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Incomplete: {(activeReview.gaps ?? []).join(', ') || 'required fields missing'}
+            </Alert>
+          )}
           <WizardReviewContent
             wizardState={sharedState}
             version={activeReview.version}

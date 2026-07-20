@@ -32,6 +32,8 @@ import {
   withCommercialsOverride,
 } from '../../utils/agreementWizardUtils';
 import { isAssetRentalIncomeType } from '../../utils/incomeTypeUtils';
+import { isAssetPayoutDurationBlocked } from '../../utils/assetPayoutDurationUtils';
+import { blurActiveElement } from '../../utils/muiDomCompat';
 import {
   getCommercialStepErrorSnackbar,
   getFirstWizardFieldErrorMessage,
@@ -413,7 +415,12 @@ export default function AgreementGroupWizardPage() {
     if (requested == null) return;
 
     const currentState = stateRef.current;
-    const maxAccessible = resolveHighestAccessibleStep(currentState, sourceAgreement);
+    // Prefer validation gate; also honor maxReachable so a successful Next
+    // (applyWizardStep) is not clamped back when slab sync lags persisted source.
+    const maxAccessible = Math.max(
+      resolveHighestAccessibleStep(currentState, sourceAgreement),
+      maxReachableStep,
+    );
     const clamped = Math.min(requested, maxAccessible);
 
     if (clamped !== requested) {
@@ -431,6 +438,7 @@ export default function AgreementGroupWizardPage() {
   }, [
     urlStepParam,
     sourceAgreement?.id,
+    sourceAgreement?.commercialStructure,
     searchParams,
     setSearchParams,
     updateStep,
@@ -438,6 +446,7 @@ export default function AgreementGroupWizardPage() {
     rememberAgreementStep,
     loadingDraft,
     activeAgreementId,
+    maxReachableStep,
   ]);
 
   const handleDraftTabChange = useCallback((agreementId) => {
@@ -459,6 +468,7 @@ export default function AgreementGroupWizardPage() {
   }, [parsedActiveAgreementId, parsedGroupId, state.step, navigate, rememberAgreementStep]);
 
   const handleDraftTabDelete = useCallback((agreementId) => {
+    blurActiveElement();
     setDeleteTargetId(agreementId);
   }, []);
 
@@ -797,7 +807,21 @@ export default function AgreementGroupWizardPage() {
     }
   };
 
+  const assetPayoutDurationBlocked = isAssetPayoutDurationBlocked({
+    payoutMode: state.agreement?.asset?.payoutMode,
+    periods: state.agreement?.asset?.assetPayoutPeriods,
+    startDate: state.agreement?.details?.startDate ?? sourceAgreement?.startDate,
+    expiryDate: state.agreement?.details?.expiryDate ?? sourceAgreement?.expiryDate,
+  });
+
   const handleSubmitForApproval = async () => {
+    if (assetPayoutDurationBlocked) {
+      enqueueSnackbar(
+        'Fix Asset payout schedule duration before submitting',
+        { variant: 'error' },
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const rows = await refreshGroupDrafts();
@@ -929,6 +953,8 @@ export default function AgreementGroupWizardPage() {
         isSavingDraft={savingDraft}
         isSavingLoop={savingLoop}
         isSubmitting={submitting}
+        nextDisabled={assetPayoutDurationBlocked}
+        submitDisabled={assetPayoutDurationBlocked}
       >
         {STEP_COMPONENTS[state.step]}
       </WizardLayout>

@@ -39,6 +39,14 @@ export const integrationApi = {
       ...(page != null && size != null ? { page, size, pinnedProductIds } : {}),
     }),
 
+  /** Live final applicable-product count (mirrors save-time compute). */
+  countProductScope: ({ manufacturers = [], divisionRules = [], productRules = [] }) =>
+    axiosInstance.post(ENDPOINTS.AGREEMENT_PRODUCT_SCOPE_COUNT, {
+      manufacturers,
+      divisionRules,
+      productRules,
+    }),
+
   searchVendors: (searchKey) =>
     axiosInstance.get(ENDPOINTS.INTEGRATION_VENDORS, { params: { searchKey } }),
 

@@ -26,8 +26,34 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import CommercialsUploadModal from './wizard/CommercialsUploadModal';
 import JbpReviewShowcase from './wizard/JbpReviewShowcase';
 import { resolveAgreementFinancialYearStartMonth } from '../../utils/jbpMatrixUtils';
-import { isCommercialContractsIncomeType } from '../../utils/incomeTypeUtils';
+import { isAssetRentalIncomeType, isCommercialContractsIncomeType } from '../../utils/incomeTypeUtils';
+import StoreMappingReviewSummary from './wizard/StoreMappingReviewSummary';
 import dayjs from 'dayjs';
+
+const currencyFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
+
+function formatAssetMoney(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? currencyFormatter.format(numeric) : '—';
+}
+
+function formatAssetPayoutPeriods(periods = []) {
+  if (!periods.length) return '—';
+  return periods
+    .map((period) => `${period.periodMonths} mo @ ${formatAssetMoney(period.payoutPerStore)}`)
+    .join('; ');
+}
+
+function resolveAssetPayoutMode(agreement) {
+  const periods = agreement?.assetPayoutPeriods ?? [];
+  if (periods.length > 0) return 'PER_STORE';
+  if (agreement?.asset?.flatPayout != null && Number(agreement.asset.flatPayout) > 0) return 'FLAT';
+  return null;
+}
 
 /** MUI StepIcon — strip internal props so they never hit the DOM. */
 function TimelineStepIcon({
@@ -296,13 +322,26 @@ export default function AgreementDetailPage({
     agreement?.incomeTypeId,
     agreement?.incomeTypeName,
   );
+  const isAssetRental = isAssetRentalIncomeType(
+    [],
+    agreement?.incomeTypeId,
+    agreement?.incomeTypeName,
+  );
   const isSlabStructure = agreement?.commercialStructure === 'SLAB';
   const showJbpMatrix = Boolean(
     agreement && isCommercialContracts && (isSlabStructure || agreement.jbpCommitted),
   );
   const showLegacyTargetsMatrix = Boolean(
-    agreement && !isCommercialContracts && isSlabStructure,
+    agreement && !isCommercialContracts && !isAssetRental && isSlabStructure,
   );
+  const assetPayoutMode = isAssetRental ? resolveAssetPayoutMode(agreement) : null;
+  const assetCategory = agreement?.asset?.assetCategory;
+  const assetCategoryLabel = assetCategory === 'PHYSICAL_ASSET'
+    ? 'Physical Asset'
+    : assetCategory === 'ACTIVITY'
+      ? 'Activity'
+      : (assetCategory || '—');
+  const assetStoreMappings = Array.isArray(agreement?.storeMappings) ? agreement.storeMappings : [];
 
   const daysToExpiry = agreement?.expiryDate
     ? dayjs(agreement.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day')
@@ -527,14 +566,22 @@ export default function AgreementDetailPage({
             <>
               <Accordion defaultExpanded elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography fontWeight={600}>Vendors</Typography>
+                  <Typography fontWeight={600}>{isAssetRental ? 'Ownership' : 'Vendors'}</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={1}>
-                    <Grid size={4}><Typography variant="caption" color="text.secondary">Owner</Typography><Typography variant="body2">{agreement.ownerName}</Typography></Grid>
-                    <Grid size={12}><Divider sx={{ my: 1 }} />
-                      {agreement.vendors?.map((v) => <Chip key={v.vendorId} label={v.vendorName} size="small" sx={{ mr: 0.5, mb: 0.5 }} />)}
+                    <Grid size={4}>
+                      <Typography variant="caption" color="text.secondary">Owner</Typography>
+                      <Typography variant="body2">{agreement.ownerName}</Typography>
                     </Grid>
+                    {!isAssetRental && (
+                      <Grid size={12}>
+                        <Divider sx={{ my: 1 }} />
+                        {agreement.vendors?.map((v) => (
+                          <Chip key={v.vendorId} label={v.vendorName} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                        ))}
+                      </Grid>
+                    )}
                   </Grid>
                 </AccordionDetails>
               </Accordion>
@@ -566,11 +613,13 @@ export default function AgreementDetailPage({
                     <Typography variant="caption" color="text.secondary">Expiry Date</Typography>
                     <Typography variant="body2">{agreement.expiryDate ? dayjs(agreement.expiryDate).format('DD MMM YYYY') : '—'}</Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Commercial Structure</Typography>
-                    <Typography variant="body2">{agreement.commercialStructure || '—'}</Typography>
-                  </Grid>
-                  {agreement.commercialStructure === 'FLAT' && (
+                  {!isAssetRental && (
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                      <Typography variant="caption" color="text.secondary">Commercial Structure</Typography>
+                      <Typography variant="body2">{agreement.commercialStructure || '—'}</Typography>
+                    </Grid>
+                  )}
+                  {!isAssetRental && agreement.commercialStructure === 'FLAT' && (
                     <Grid size={{ xs: 6, sm: 3 }}>
                       <Typography variant="caption" color="text.secondary">Commercial Value</Typography>
                       <Typography variant="body2">₹{Number(agreement.commercialValue || 0).toLocaleString('en-IN')}</Typography>
@@ -578,6 +627,56 @@ export default function AgreementDetailPage({
                   )}
                 </Grid>
               </Paper>
+
+              {isAssetRental && (
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Asset Commercials</Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                      <Typography variant="caption" color="text.secondary">Asset Category</Typography>
+                      <Typography variant="body2">{assetCategoryLabel}</Typography>
+                    </Grid>
+                    {assetCategory !== 'ACTIVITY' && (
+                      <Grid size={{ xs: 6, sm: 3 }}>
+                        <Typography variant="caption" color="text.secondary">Asset Type</Typography>
+                        <Typography variant="body2">{agreement.asset?.assetType || '—'}</Typography>
+                      </Grid>
+                    )}
+                    <Grid size={{ xs: 6, sm: 3 }}>
+                      <Typography variant="caption" color="text.secondary">Payout Mode</Typography>
+                      <Typography variant="body2">
+                        {assetPayoutMode === 'PER_STORE'
+                          ? 'Payout per Store'
+                          : assetPayoutMode === 'FLAT'
+                            ? 'Flat Payout'
+                            : '—'}
+                      </Typography>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {assetPayoutMode === 'PER_STORE' ? 'Payout Schedule' : 'Flat Payout Amount'}
+                      </Typography>
+                      <Typography variant="body2">
+                        {assetPayoutMode === 'PER_STORE'
+                          ? formatAssetPayoutPeriods(agreement.assetPayoutPeriods)
+                          : formatAssetMoney(agreement.asset?.flatPayout)}
+                      </Typography>
+                    </Grid>
+                    {agreement.asset?.remarks && (
+                      <Grid size={12}>
+                        <Typography variant="caption" color="text.secondary">Remarks</Typography>
+                        <Typography variant="body2">{agreement.asset.remarks}</Typography>
+                      </Grid>
+                    )}
+                    <Grid size={12}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Participating Stores
+                      </Typography>
+                      <StoreMappingReviewSummary stores={assetStoreMappings} />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              )}
 
               {showJbpMatrix && (
                 <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
@@ -604,16 +703,18 @@ export default function AgreementDetailPage({
                 </Paper>
               )}
 
-              <Accordion elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography fontWeight={600}>Products ({agreement.products?.length || 0})</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {agreement.products?.map((p) => (
-                    <Chip key={p.productId} label={`${p.productName} (${p.divisionName || ''})`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
-                  ))}
-                </AccordionDetails>
-              </Accordion>
+              {!isAssetRental && (
+                <Accordion elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+                  <AccordionSummary expandIcon={<ExpandMore />}>
+                    <Typography fontWeight={600}>Products ({agreement.products?.length || 0})</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {agreement.products?.map((p) => (
+                      <Chip key={p.productId} label={`${p.productName} (${p.divisionName || ''})`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                    ))}
+                  </AccordionDetails>
+                </Accordion>
+              )}
             </>
           ) : (
             <Typography color="text.secondary">Select a version to view details.</Typography>

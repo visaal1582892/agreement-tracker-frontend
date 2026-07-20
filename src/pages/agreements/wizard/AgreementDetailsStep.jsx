@@ -8,6 +8,7 @@ import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import { BRAND } from '../../../config/theme';
 import DateRangeFields from '../../../components/forms/DateRangeFields';
+import { toMuiTextFieldSlotProps } from '../../../utils/muiDomCompat';
 
 const DOCUMENT_TYPES = ['AGREEMENT', 'SUPPORTING_DOC', 'EMAIL', 'OTHER'];
 
@@ -127,7 +128,12 @@ export default function AgreementDetailsStep({
               isOptionEqualToValue={(option, value) => option.id === value.id}
               onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((s) => s.id) })}
               renderInput={(params) => (
-                <TextField {...params} label="States" size="small" placeholder="Select states" />
+                <TextField
+                  {...toMuiTextFieldSlotProps(params)}
+                  label="States"
+                  size="small"
+                  placeholder="Select states"
+                />
               )}
             />
           </Grid>

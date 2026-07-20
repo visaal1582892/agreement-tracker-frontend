@@ -11,6 +11,8 @@ export default function AssetPayoutFields({
   onUpdateAsset,
   hideSectionTitle = false,
   fieldErrors = {},
+  startDate = null,
+  expiryDate = null,
 }) {
   const payoutMode = asset?.payoutMode || 'FLAT';
   const periods = asset?.assetPayoutPeriods ?? [];
@@ -71,6 +73,8 @@ export default function AssetPayoutFields({
           periods={periods}
           onChange={(nextPeriods) => onUpdateAsset({ assetPayoutPeriods: nextPeriods })}
           fieldError={fieldErrors.assetPayoutPeriods}
+          startDate={startDate}
+          expiryDate={expiryDate}
         />
       )}
     </Box>

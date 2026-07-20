@@ -19,19 +19,8 @@ import {
 } from '../constants/commercialStructure';
 import { LEAD_TIME_BASIS } from '../constants/leadTimeBasis';
 import { getCommercialStepErrorSnackbar, getFirstWizardFieldErrorMessage } from './wizardValidationUx';
+import { evaluateAssetPayoutDuration } from './assetPayoutDurationUtils';
 import dayjs from 'dayjs';
-
-function validateParticipatingStoreCount(asset) {
-  const raw = asset?.storeCount;
-  if (raw === '' || raw == null) {
-    return 'Number of participating stores is required';
-  }
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
-    return 'Enter a whole number greater than 0 for participating stores';
-  }
-  return null;
-}
 
 export function mapCommercialsFromApi(agreement, slabCount = null) {
   const jbpCommitted = Boolean(agreement.jbpCommitted);
@@ -108,9 +97,7 @@ function buildAssetPayload(asset) {
   return {
     assetCategory,
     assetType: assetCategory === 'ACTIVITY' ? null : assetType,
-    storeCount: asset.storeCount !== '' && asset.storeCount != null
-      ? Number(asset.storeCount)
-      : null,
+    storeCount: null,
     flatPayout: payoutMode === 'FLAT' && asset.flatPayout !== '' && asset.flatPayout != null
       ? asset.flatPayout
       : null,
@@ -154,15 +141,25 @@ export function buildAgreementDetailsPayload(agreement, { includeDocuments = fal
   }
   const { details, commercials } = agreement;
   const scrubbedDetails = scrubSettlementLeadTimeFields(details ?? {});
+  const isAssetRental = isAssetRentalIncomeType(
+    [],
+    scrubbedDetails.incomeTypeId,
+    scrubbedDetails.incomeTypeName,
+  );
   const detailsPayload = {
       incomeTypeId: scrubbedDetails.incomeTypeId || null,
       agreementTypeId: scrubbedDetails.agreementTypeId || null,
       startDate: formatLocalDateString(scrubbedDetails.startDate),
       expiryDate: formatLocalDateString(scrubbedDetails.expiryDate),
       notes: scrubbedDetails.notes || null,
-      geographyMode: scrubbedDetails.geographyMode || 'MIXED',
-      partnerStates: Array.isArray(scrubbedDetails.partnerStates) ? scrubbedDetails.partnerStates : [],
-      partnerCities: Array.isArray(scrubbedDetails.partnerCities) ? scrubbedDetails.partnerCities : [],
+      // Asset Rentals: storeIds define geography — scrub partner geo to avoid conflicting state.
+      geographyMode: isAssetRental ? GEOGRAPHY_MODE.ALL : (scrubbedDetails.geographyMode || 'MIXED'),
+      partnerStates: isAssetRental
+        ? []
+        : (Array.isArray(scrubbedDetails.partnerStates) ? scrubbedDetails.partnerStates : []),
+      partnerCities: isAssetRental
+        ? []
+        : (Array.isArray(scrubbedDetails.partnerCities) ? scrubbedDetails.partnerCities : []),
       adhocSubType: scrubbedDetails.adhocSubType || null,
       quantityCap: scrubbedDetails.quantityCap !== '' && scrubbedDetails.quantityCap != null
         ? scrubbedDetails.quantityCap
@@ -586,13 +583,6 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
     if (asset?.assetCategory !== 'ACTIVITY' && !asset?.assetType?.trim()) {
       fieldErrors.assetType = 'Asset type is required for Asset Rentals';
     }
-    if (asset?.assetCategory !== 'ACTIVITY') {
-      applyPartnerLocationFieldErrors(fieldErrors, details, 'Asset Rentals');
-    }
-    const storeCountError = validateParticipatingStoreCount(asset);
-    if (storeCountError) {
-      fieldErrors.storeCount = storeCountError;
-    }
     Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, true));
     return fieldErrors;
   }
@@ -666,39 +656,32 @@ export async function getAssetRentalUnmappedStatesWarning(
   }
 }
 
-function reconcileStoreCount(actualMappedCount, expectedStoreCount) {
+function requireMappedStores(actualMappedCount) {
   const fieldErrors = {};
-  const expected = Number(expectedStoreCount);
-
-  if (!Number.isInteger(expected) || expected <= 0) {
-    if (actualMappedCount === 0) {
-      fieldErrors.storeMappings = 'Upload at least one mapped store';
-    }
-    return fieldErrors;
-  }
-
-  if (expected !== actualMappedCount) {
-    const diff = Math.abs(expected - actualMappedCount);
-    const status = actualMappedCount < expected
-      ? `missing ${diff} store(s)`
-      : `${diff} store(s) in excess`;
-    fieldErrors.storeMappings = `Reconciliation Lock: Step 2 scope mandates exactly ${expected} stores, but you have mapped ${actualMappedCount} (${status}).`;
+  if (actualMappedCount === 0) {
+    fieldErrors.storeMappings = 'Upload at least one mapped store';
   }
   return fieldErrors;
 }
 
 /**
- * Validate Asset store count.
+ * Validate Asset store mappings — mapped store list is the sole store-count source of truth.
  * When memoryStoreMappings is an array (revision upload), validate that list.
+ * When sourceStoreMappings is provided (Edit/Renew keep-source), count those without requiring a draft.
  * Otherwise fetch mappings from the agreement version (create draft / deep-copy path).
  */
 export async function validateAssetRentalStoreMappings(
   agreementVersionId,
-  expectedStoreCount = 0,
+  _expectedStoreCount = 0,
   memoryStoreMappings = undefined,
+  sourceStoreMappings = undefined,
 ) {
   if (Array.isArray(memoryStoreMappings)) {
-    return reconcileStoreCount(memoryStoreMappings.length, expectedStoreCount);
+    return requireMappedStores(memoryStoreMappings.length);
+  }
+
+  if (Array.isArray(sourceStoreMappings)) {
+    return requireMappedStores(sourceStoreMappings.length);
   }
 
   const fieldErrors = {};
@@ -710,8 +693,9 @@ export async function validateAssetRentalStoreMappings(
   try {
     const mappedStores = await fetchStoreMappings(agreementVersionId);
     const actualMappedCount = Array.isArray(mappedStores) ? mappedStores.length : 0;
-    return reconcileStoreCount(actualMappedCount, expectedStoreCount);
-  } catch {
+    return requireMappedStores(actualMappedCount);
+  } catch (err) {
+    console.error('Unable to validate mapped stores', err);
     fieldErrors.storeMappings = 'Unable to validate mapped stores';
   }
   return fieldErrors;
@@ -737,6 +721,16 @@ export function collectCommercialStructureStepErrors(state, incomeTypes = [], so
       );
       if (validPeriods.length === 0) {
         fieldErrors.assetPayoutPeriods = 'Add at least one payout period row';
+      } else {
+        const durationEval = evaluateAssetPayoutDuration({
+          payoutMode: 'PER_STORE',
+          periods: asset.assetPayoutPeriods,
+          startDate: agreement.details?.startDate ?? sourceAgreement?.startDate,
+          expiryDate: agreement.details?.expiryDate ?? sourceAgreement?.expiryDate,
+        });
+        if (durationEval.status === 'error') {
+          fieldErrors.assetPayoutPeriods = durationEval.message;
+        }
       }
     } else if (!asset?.flatPayout || Number(asset.flatPayout) <= 0) {
       fieldErrors.flatPayout = 'Enter flat payout amount';
@@ -804,12 +798,16 @@ export async function collectCommercialStructureStepErrorsAsync(
   );
   if (isAssetRental) {
     const versionId = serverAgreementId ?? sourceAgreement?.id;
-    const expectedStoreCount = Number(state.agreement?.asset?.storeCount ?? 0);
     const memoryMappings = state.commercialData?.storeMappings;
+    const sourceMappings = Array.isArray(sourceAgreement?.storeMappings)
+      ? sourceAgreement.storeMappings
+      : undefined;
     const storeErrors = await validateAssetRentalStoreMappings(
       versionId,
-      expectedStoreCount,
+      0,
       Array.isArray(memoryMappings) ? memoryMappings : undefined,
+      // Edit/Renew with no override: trust embedded source stores (kept on submit).
+      Array.isArray(memoryMappings) ? undefined : sourceMappings,
     );
     Object.assign(fieldErrors, storeErrors);
     return fieldErrors;
@@ -885,7 +883,7 @@ function validateSettlementRoutingFields(details, isAssetRental, enqueueSnackbar
 }
 
 function validateAssetRentalConfigurationFields(agreement, enqueueSnackbar) {
-  const { asset, details } = agreement ?? {};
+  const { asset } = agreement ?? {};
   if (!asset?.assetCategory) {
     enqueueSnackbar('Asset category is required for Asset Rentals', { variant: 'warning' });
     return false;
@@ -894,19 +892,10 @@ function validateAssetRentalConfigurationFields(agreement, enqueueSnackbar) {
     enqueueSnackbar('Asset type is required for Asset Rentals', { variant: 'warning' });
     return false;
   }
-  if (asset?.assetCategory !== 'ACTIVITY' && !hasPartnerLocation(details)) {
-    enqueueSnackbar('Select state and city for Asset Rentals', { variant: 'warning' });
-    return false;
-  }
-  const storeCountError = validateParticipatingStoreCount(asset);
-  if (storeCountError) {
-    enqueueSnackbar(storeCountError, { variant: 'warning' });
-    return false;
-  }
   return true;
 }
 
-function validateAssetRentalPayoutFields(agreement, enqueueSnackbar) {
+function validateAssetRentalPayoutFields(agreement, enqueueSnackbar, sourceAgreement = null) {
   const { asset } = agreement ?? {};
   if (asset?.payoutMode === 'PER_STORE') {
     const validPeriods = (asset.assetPayoutPeriods ?? []).filter(
@@ -915,6 +904,16 @@ function validateAssetRentalPayoutFields(agreement, enqueueSnackbar) {
     );
     if (validPeriods.length === 0) {
       enqueueSnackbar('Add at least one payout period row', { variant: 'warning' });
+      return false;
+    }
+    const durationEval = evaluateAssetPayoutDuration({
+      payoutMode: 'PER_STORE',
+      periods: asset.assetPayoutPeriods,
+      startDate: agreement?.details?.startDate ?? sourceAgreement?.startDate,
+      expiryDate: agreement?.details?.expiryDate ?? sourceAgreement?.expiryDate,
+    });
+    if (durationEval.status === 'error') {
+      enqueueSnackbar(durationEval.message, { variant: 'error' });
       return false;
     }
   } else if (!asset?.flatPayout || Number(asset.flatPayout) <= 0) {
@@ -998,7 +997,11 @@ export function validateCommercialStructureStepSync(
   if (isCommercialContractsIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
     return true;
   }
-  if (base.enableSlab) return false;
+  // Slab rows need async API checks on Next. Sync gate only blocks review until
+  // structure is persisted as SLAB — otherwise URL clamp undoes a successful Next.
+  if (base.enableSlab) {
+    return resolveStructureType(sourceAgreement?.commercialStructure) === STRUCTURE_TYPE.SLABS;
+  }
   return true;
 }
 

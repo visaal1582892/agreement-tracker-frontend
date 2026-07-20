@@ -10,7 +10,6 @@ import AgreementFilesSection from '../../../components/upload/AgreementFilesSect
 import Step2Products from './Step2Products';
 import Step2SupplyVendors from './Step2SupplyVendors';
 import AssetRentalScopeFields from './AssetRentalScopeFields';
-import AssetRentalGeographyFields from './AssetRentalGeographyFields';
 import PartnerLocationFields from './PartnerLocationFields';
 import AdHocActivityFields from './AdHocActivityFields';
 import SettlementRoutingFields from './SettlementRoutingFields';
@@ -24,7 +23,7 @@ import {
 const DOCUMENT_TYPES = ['AGREEMENT', 'SUPPORTING_DOC', 'EMAIL', 'OTHER'];
 
 const SCOPE_ERROR_FIELDS = ['supplyVendors', 'products', 'assetCategory', 'assetType'];
-const GEO_ERROR_FIELDS = ['geographyMode', 'partnerState', 'partnerCity', 'storeCount', 'quantityCap'];
+const GEO_ERROR_FIELDS = ['geographyMode', 'partnerState', 'partnerCity', 'quantityCap'];
 const SETTLEMENT_ERROR_FIELDS = ['paymentRealization', 'calculationBasis', 'invoiceVendor'];
 
 function sectionHasError(fieldErrors, fields) {
@@ -80,7 +79,7 @@ export default function ConfigurationStep({
   );
   const documents = details.documents ?? [];
   const hasIncomeType = Boolean(details.incomeTypeId);
-  const showGeographySection = isAssetRental || isCommercialContracts || isDataFee;
+  const showGeographySection = isCommercialContracts || isDataFee;
 
   const mergedFieldErrors = { ...fieldErrors };
   const scopeHasError = sectionHasError(mergedFieldErrors, SCOPE_ERROR_FIELDS);
@@ -177,11 +176,7 @@ export default function ConfigurationStep({
           {showGeographySection && (
             <CollapsibleSection
               title="Geography & Limits"
-              description={
-                isAssetRental
-                  ? 'Regional scope and participating store count.'
-                  : 'Regional scope, store counts, and campaign limits.'
-              }
+              description="Regional scope, store counts, and campaign limits."
               forceExpand={geographyHasError}
               hasError={geographyHasError}
             >
@@ -194,18 +189,6 @@ export default function ConfigurationStep({
                   allowAllLocations={isDataFee}
                 />
               )}
-
-              {isAssetRental && (
-                <AssetRentalGeographyFields
-                  asset={asset}
-                  details={details}
-                  onUpdateAsset={onUpdateAsset}
-                  onUpdateDetails={onUpdateDetails}
-                  fieldErrors={mergedFieldErrors}
-                  onClearFieldError={onClearFieldError}
-                />
-              )}
-
             </CollapsibleSection>
           )}
 

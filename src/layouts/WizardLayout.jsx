@@ -295,7 +295,7 @@ export default function WizardLayout({
               <Button
                 variant="contained"
                 onClick={onCommercialsNext}
-                disabled={busy}
+                disabled={busy || nextDisabled}
                 sx={{
                   borderRadius: 2.5,
                   px: 3,

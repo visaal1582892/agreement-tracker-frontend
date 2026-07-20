@@ -3,6 +3,7 @@ import {
   Box, Button, Dialog, DialogContent, DialogTitle, Typography,
 } from '@mui/material';
 import StoreMappingTable from './StoreMappingTable';
+import { blurActiveElement } from '../../../utils/muiDomCompat';
 
 function groupStoresByState(stores = []) {
   const groups = new Map();
@@ -39,7 +40,15 @@ export default function StoreMappingReviewSummary({ stores = [] }) {
         >
           Participating Stores: {stores.length} Store{stores.length === 1 ? '' : 's'} across {stateCount} State{stateCount === 1 ? '' : 's'}
         </Box>
-        <Button variant="text" size="small" onClick={() => setOpen(true)} sx={{ minWidth: 0, p: 0 }}>
+        <Button
+          variant="text"
+          size="small"
+          onClick={() => {
+            blurActiveElement();
+            setOpen(true);
+          }}
+          sx={{ minWidth: 0, p: 0 }}
+        >
           View Store List
         </Button>
       </Box>

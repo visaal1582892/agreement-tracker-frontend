@@ -87,7 +87,7 @@ export default function StoreMappingTable({
                     checked={stores.length > 0 && selectedCount === stores.length}
                     indeterminate={selectedCount > 0 && selectedCount < stores.length}
                     onChange={onSelectAllToggle}
-                    inputProps={{ 'aria-label': 'Select all outlets' }}
+                    slotProps={{ input: { 'aria-label': 'Select all outlets' } }}
                   />
                 </TableCell>
               )}
@@ -121,7 +121,7 @@ export default function StoreMappingTable({
                         size="small"
                         checked={isSelected}
                         onChange={() => onToggle?.(rowId)}
-                        inputProps={{ 'aria-label': `Select ${store.storeCode}` }}
+                        slotProps={{ input: { 'aria-label': `Select ${store.storeCode}` } }}
                       />
                     </TableCell>
                   )}

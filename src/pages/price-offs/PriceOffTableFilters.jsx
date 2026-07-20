@@ -5,6 +5,7 @@ import {
   HORIZONTAL_SCROLL_TABLE_SX,
   columnCellSx,
 } from '../../components/ui/tableStandards';
+import { toMuiTextFieldSlotProps } from '../../utils/muiDomCompat';
 
 export const STICKY_CHECKBOX_WIDTH = 68;
 
@@ -240,7 +241,9 @@ export function HeaderMasterFilter({ options, value, onChange, placeholder = 'Se
       onChange={(_, option) => onChange(option?.value ?? '')}
       getOptionLabel={(option) => option.label}
       isOptionEqualToValue={(a, b) => a.value === b.value}
-      renderInput={(params) => <TextField {...params} placeholder={placeholder} />}
+      renderInput={(params) => (
+        <TextField {...toMuiTextFieldSlotProps(params)} placeholder={placeholder} />
+      )}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
       sx={FILTER_FIELD_SX}

@@ -1,11 +1,9 @@
-import { Box, Grid, TextField } from '@mui/material';
-import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
+import { Box, Grid } from '@mui/material';
 import PartnerLocationFields from './PartnerLocationFields';
 
+/** @deprecated Asset Rentals no longer use partner geography; kept for any residual imports. */
 export default function AssetRentalGeographyFields({
-  asset,
   details = {},
-  onUpdateAsset,
   onUpdateDetails,
   fieldErrors = {},
   onClearFieldError,
@@ -20,31 +18,6 @@ export default function AssetRentalGeographyFields({
             fieldErrors={fieldErrors}
             onClearFieldError={onClearFieldError}
           />
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <WizardFieldAnchor field="storeCount" error={fieldErrors.storeCount}>
-            <TextField
-              label="Number of Participating Stores *"
-              type="number"
-              fullWidth
-              size="small"
-              value={asset?.storeCount ?? ''}
-              onChange={(e) => {
-                const { value } = e.target;
-                if (value === '') {
-                  onUpdateAsset({ storeCount: '' });
-                  return;
-                }
-                const parsed = Number(value);
-                if (!Number.isFinite(parsed)) return;
-                onUpdateAsset({ storeCount: String(Math.trunc(parsed)) });
-              }}
-              error={Boolean(fieldErrors.storeCount)}
-              helperText={fieldErrors.storeCount || 'Must be a whole number greater than 0'}
-              slotProps={{ htmlInput: { min: 1, step: 1 } }}
-            />
-          </WizardFieldAnchor>
         </Grid>
       </Grid>
     </Box>

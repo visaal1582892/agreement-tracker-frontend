@@ -289,7 +289,7 @@ export default function CommercialContactsCutoffSection({
                                 'lowerCutoff',
                                 e.target.value,
                               )}
-                              inputProps={{ min: 0, max: 100, step: 0.01 }}
+                              slotProps={{ input: { min: 0, max: 100, step: 0.01 } }}
                               sx={{ fontSize: '0.875rem', px: 1, width: '100%' }}
                             />
                           </TableCell>,
@@ -303,7 +303,7 @@ export default function CommercialContactsCutoffSection({
                                 'upperCutoff',
                                 e.target.value,
                               )}
-                              inputProps={{ min: 100, step: 0.01 }}
+                              slotProps={{ input: { min: 100, step: 0.01 } }}
                               sx={{ fontSize: '0.875rem', px: 1, width: '100%' }}
                             />
                           </TableCell>,

@@ -7,7 +7,6 @@ export const WIZARD_FIELD_SCROLL_ORDER = [
   'geographyMode',
   'partnerState',
   'partnerCity',
-  'storeCount',
   'quantityCap',
   'paymentRealization',
   'leadTimeBasis',
@@ -37,6 +36,9 @@ export function getFirstWizardFieldErrorMessage(fieldErrors = {}) {
 export function getCommercialStepErrorSnackbar(fieldErrors = {}) {
   if (fieldErrors.storeMappings?.startsWith('Reconciliation Lock')) {
     return { message: fieldErrors.storeMappings, variant: 'error' };
+  }
+  if (fieldErrors.assetPayoutPeriods?.startsWith('Error:')) {
+    return { message: fieldErrors.assetPayoutPeriods, variant: 'error' };
   }
   return { message: getFirstWizardFieldErrorMessage(fieldErrors), variant: 'warning' };
 }

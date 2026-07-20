@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Chip, Alert } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Chip,
+  Alert,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+} from '@mui/material';
 import dayjs from 'dayjs';
 import { useSnackbar } from 'notistack';
 import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
@@ -17,6 +29,7 @@ import {
   PAYOUT_FREQUENCY_OPTIONS,
   deriveHybridFlags,
 } from '../../../constants/commercialStructure';
+import { CAP_UNIT } from '../../../constants/capUnit';
 import { LEAD_TIME_BASIS, LEAD_TIME_BASIS_OPTIONS } from '../../../constants/leadTimeBasis';
 import ScopeOperationsReview from '../../../components/review/ScopeOperationsReview';
 import DocumentFileLink from '../../../components/upload/DocumentFileLink';
@@ -61,9 +74,19 @@ function resolveIncomeProfile(incomeTypeName) {
 }
 
 function formatCommercialValue(value, valueType) {
-  if (!value) return '—';
+  if (value === null || value === undefined || value === '') return '—';
   if (valueType === 'PERCENTAGE') return `${value}%`;
   return `₹${Number(value).toLocaleString('en-IN')}`;
+}
+
+function formatCapValue(value, capUnit) {
+  if (value === null || value === undefined || value === '') return '—';
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return String(value);
+  if (capUnit === CAP_UNIT.QUANTITY) {
+    return numeric.toLocaleString('en-IN');
+  }
+  return `₹${numeric.toLocaleString('en-IN')}`;
 }
 
 function payoutFrequencyLabel(value) {
@@ -232,7 +255,14 @@ export default function WizardReviewContent({
   );
   const payoutPeriods = resolvePayoutPeriods(asset, version);
   const isCommercialContracts = profile === 'COMMERCIAL_CONTRACTS';
-  const showSlabSection = profile !== 'ASSET_RENTAL' && enableSlab && !isCommercialContracts && (loadingSlabs || slabs.length > 0);
+  const isAdHoc = profile === 'AD_HOC';
+  // Ad-Hoc uses tier table commercials — not Excel performance-target upload.
+  const showSlabSection = profile !== 'ASSET_RENTAL'
+    && !isAdHoc
+    && enableSlab
+    && !isCommercialContracts
+    && (loadingSlabs || slabs.length > 0);
+  const showAdHocCommercialsSection = isAdHoc && enableSlab;
   const showCommercialJbpSection = isCommercialContracts && enableSlab;
 
   useEffect(() => {
@@ -363,7 +393,6 @@ export default function WizardReviewContent({
             {!isActivityAsset && (
               <ReviewRow label="Asset Type" value={resolveAssetValue(asset, versionAsset, 'assetType')} />
             )}
-            <ReviewRow label="Store Count" value={resolveAssetValue(asset, versionAsset, 'storeCount')} />
             <ReviewRow
               label={assetPayoutMode === 'PER_STORE' ? 'Payout Schedule' : 'Flat Payout'}
               value={assetPayoutMode === 'PER_STORE'
@@ -468,6 +497,66 @@ export default function WizardReviewContent({
               memoryStagedWorkbook={memoryJbp}
               preferMemoryOverFetch={revisionMode}
             />
+          </CollapsibleSection>
+        )}
+
+        {showAdHocCommercialsSection && (
+          <CollapsibleSection title="Commercials" defaultExpanded sx={REVIEW_SECTION_SX}>
+            {isQps && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                QPS payout frequency is locked to <strong>One-Time</strong>.
+              </Alert>
+            )}
+            <ReviewRow label="Structure" value="Slab-Based Incentive" />
+            {loadingSlabs ? (
+              <Typography variant="body2" color="text.secondary">Loading commercials…</Typography>
+            ) : (
+              <TableContainer
+                component={Paper}
+                variant="outlined"
+                sx={{ borderRadius: 2, overflow: 'hidden', mt: 1 }}
+              >
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Min Cap</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Max Cap</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Payout</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {slabs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4}>
+                          <Typography variant="body2" color="text.secondary">
+                            No commercial tiers added.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      slabs.map((slab) => {
+                        const capUnit = slab.capUnit
+                          || commercials.slabCapUnit
+                          || CAP_UNIT.RUPEES;
+                        return (
+                          <TableRow key={slab.id}>
+                            <TableCell>{formatCapValue(slab.minCap, capUnit)}</TableCell>
+                            <TableCell>{formatCapValue(slab.maxCap, capUnit)}</TableCell>
+                            <TableCell>
+                              {formatCommercialValue(slab.commercialValue, slab.valueType)}
+                            </TableCell>
+                            <TableCell>
+                              {payoutFrequencyLabel(slab.payoutFrequency)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
           </CollapsibleSection>
         )}
 

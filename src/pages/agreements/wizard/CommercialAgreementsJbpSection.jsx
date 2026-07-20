@@ -28,6 +28,7 @@ import { Add, Delete, Download, UploadFile } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { useSnackbar } from 'notistack';
 import { BRAND } from '../../../config/theme';
+import { toMuiTextFieldSlotProps, blurActiveElement } from '../../../utils/muiDomCompat';
 import WizardSectionTitle from '../../../components/wizard/WizardSectionTitle';
 import CommercialValueInput from '../../../components/forms/CommercialValueInput';
 import {
@@ -321,6 +322,7 @@ export default function CommercialAgreementsJbpSection({
     if (nextMonth === financialYearStartMonth) return;
 
     if (hasJbpMatrixState) {
+      blurActiveElement();
       setPendingFinancialYearStartMonth(nextMonth);
       return;
     }
@@ -654,7 +656,12 @@ export default function CommercialAgreementsJbpSection({
             setStagedWorkbook(null);
           }}
           renderInput={(params) => (
-            <TextField {...params} label="Target Intervals" size="small" placeholder="Select intervals" />
+            <TextField
+              {...toMuiTextFieldSlotProps(params)}
+              label="Target Intervals"
+              size="small"
+              placeholder="Select intervals"
+            />
           )}
           sx={{ mb: 2 }}
         />
@@ -688,7 +695,7 @@ export default function CommercialAgreementsJbpSection({
               onChange={(_, value) => handleConfigChange(config.id, { parentPeriodIds: value.map((item) => item.id) })}
               renderInput={(params) => (
                 <TextField
-                  {...params}
+                  {...toMuiTextFieldSlotProps(params)}
                   label={masterFrequency ? `Parent Periods (${masterFrequency.replace('_', ' ')})` : 'Parent Periods'}
                   size="small"
                   placeholder="Select parent periods"

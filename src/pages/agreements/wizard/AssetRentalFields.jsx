@@ -6,6 +6,7 @@ import {
 
 import { ASSET_TYPE_OPTIONS } from '../../../constants/assetTypes';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
+import { toMuiTextFieldSlotProps } from '../../../utils/muiDomCompat';
 
 const ASSET_CATEGORY_OPTIONS = [
   { value: 'PHYSICAL_ASSET', label: 'Physical Asset' },
@@ -85,34 +86,14 @@ export default function AssetRentalFields({
             isOptionEqualToValue={(option, value) => option.id === value.id}
             onChange={(_, newValue) => onUpdateDetails({ stateIds: newValue.map((state) => state.id) })}
             renderInput={(params) => (
-              <TextField {...params} label="Location (States) *" size="small" placeholder="Select states" />
+              <TextField
+                {...toMuiTextFieldSlotProps(params)}
+                label="Location (States) *"
+                size="small"
+                placeholder="Select states"
+              />
             )}
           />
-        </Grid>
-
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <WizardFieldAnchor field="storeCount" error={fieldErrors.storeCount}>
-            <TextField
-              label="Number of Participating Stores *"
-              type="number"
-              fullWidth
-              size="small"
-              value={asset?.storeCount ?? ''}
-              onChange={(e) => {
-                const { value } = e.target;
-                if (value === '') {
-                  onUpdateAsset({ storeCount: '' });
-                  return;
-                }
-                const parsed = Number(value);
-                if (!Number.isFinite(parsed)) return;
-                onUpdateAsset({ storeCount: String(Math.trunc(parsed)) });
-              }}
-              error={Boolean(fieldErrors.storeCount)}
-              helperText={fieldErrors.storeCount || 'Must be a whole number greater than 0'}
-              slotProps={{ htmlInput: { min: 1, step: 1 } }}
-            />
-          </WizardFieldAnchor>
         </Grid>
       </Grid>
     </Box>

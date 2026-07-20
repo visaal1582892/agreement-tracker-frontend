@@ -14,7 +14,7 @@ export function hasSubsequentStepData(state) {
     || details.quantityCap
     || details.adhocSubType
     || asset?.assetType
-    || asset?.storeCount
+    || asset?.assetCategory
     || commercials?.commercialValue
     || commercials?.enableSlabIncentives,
   );

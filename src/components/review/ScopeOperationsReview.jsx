@@ -29,6 +29,12 @@ function formatDivisionRuleLabel(divisionName, ruleType, divisionId) {
   return `${divisionName} (${mode})${idSuffix}`;
 }
 
+function formatProductRuleLabel(productName, ruleType, productId) {
+  const mode = ruleType === 'EXCLUDE' ? 'Excluded' : 'Included';
+  const idSuffix = productId != null ? ` · ID: ${productId}` : '';
+  return `${productName} (${mode})${idSuffix}`;
+}
+
 function formatManufacturerLabel(manufacturer) {
   const name = manufacturer.manufacturerName || manufacturer.name || `Manufacturer #${manufacturer.id}`;
   return manufacturer.id != null ? `${name} (ID: ${manufacturer.id})` : name;
@@ -60,23 +66,54 @@ export default function ScopeOperationsReview({
     ? productRules.divisionRules
     : version?.divisionRules ?? [];
 
+  // Ensure live rules from Step 2 override any static initial edit snapshot
+  const activeProductRules = productRules.productRules?.length
+    ? productRules.productRules
+    : (version?.productRules || []);
+
   const computedProductRows = useMemo(() => {
+    let baseProducts = [];
     if (version?.products?.length) {
-      return version.products.map((product) => ({
+      baseProducts = version.products.map((product) => ({
+        productId: product.productId,
+        productName: product.productName,
+        divisionName: product.divisionName || '—',
+      }));
+    } else if (productRules.computedProductPreview?.length) {
+      baseProducts = productRules.computedProductPreview.map((product) => ({
         productId: product.productId,
         productName: product.productName,
         divisionName: product.divisionName || '—',
       }));
     }
-    if (productRules.computedProductPreview?.length) {
-      return productRules.computedProductPreview.map((product) => ({
-        productId: product.productId,
-        productName: product.productName,
-        divisionName: product.divisionName || '—',
-      }));
+
+    if (activeProductRules && activeProductRules.length > 0) {
+      // 1. Remove explicitly excluded products
+      const excludedIds = new Set(
+        activeProductRules.filter((r) => r.ruleType === 'EXCLUDE').map((r) => r.id)
+      );
+      if (excludedIds.size > 0) {
+        baseProducts = baseProducts.filter((p) => !excludedIds.has(p.productId));
+      }
+
+      // 2. Add explicitly included products that are missing
+      const existingIds = new Set(baseProducts.map((p) => p.productId));
+      const missingIncludes = activeProductRules.filter(
+        (r) => r.ruleType === 'INCLUDE' && !existingIds.has(r.id)
+      );
+
+      if (missingIncludes.length > 0) {
+        const extraProducts = missingIncludes.map((r) => ({
+          productId: r.id,
+          productName: r.name || r.productName || `Product #${r.id}`,
+          divisionName: r.divisionName || '—',
+        }));
+        baseProducts = [...extraProducts, ...baseProducts];
+      }
     }
-    return [];
-  }, [version?.products, productRules.computedProductPreview]);
+
+    return baseProducts;
+  }, [version?.products, productRules.computedProductPreview, activeProductRules]);
 
   const vendorLabels = (version?.vendors || [])
     .filter((vendor) => vendorIds.includes(vendor.vendorId))
@@ -85,6 +122,9 @@ export default function ScopeOperationsReview({
   const manufacturerLabels = manufacturers.map(formatManufacturerLabel).filter(Boolean);
   const divisionLabels = divisionRules.map((rule) =>
     formatDivisionRuleLabel(rule.name || `Division #${rule.id}`, rule.ruleType, rule.id),
+  );
+  const productRuleLabels = activeProductRules.map((rule) =>
+    formatProductRuleLabel(rule.name || rule.productName || `Product #${rule.id}`, rule.ruleType, rule.id),
   );
 
   return (
@@ -97,6 +137,9 @@ export default function ScopeOperationsReview({
       </ScopeReviewField>
       <ScopeReviewField label="Division Rules">
         <TruncatedInlineList items={divisionLabels} emptyLabel="No division rules" />
+      </ScopeReviewField>
+      <ScopeReviewField label="Product Exceptions">
+        <TruncatedInlineList items={productRuleLabels} emptyLabel="No product exceptions" />
       </ScopeReviewField>
       <ScopeReviewField label="Computed Products">
         {computedProductRows.length === 0 ? (

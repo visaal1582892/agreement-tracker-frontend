@@ -144,8 +144,14 @@ function normalizeProduct(item) {
 export function hasSavedProductRules(rules = {}) {
   return Boolean(
     rules.manufacturers?.length ||
+    rules.manufacturerIds?.length ||
+    rules.manufacturerOptions?.length ||
     rules.divisionRules?.length ||
-    rules.productRules?.length,
+    rules.divisionIds?.length ||
+    rules.divisions?.length ||
+    rules.productRules?.length ||
+    rules.productIds?.length ||
+    rules.products?.length
   );
 }
 
@@ -153,10 +159,14 @@ export function mapSharedRulesToLocalState(rules) {
   const seedMfrs = (
     rules.manufacturerOptions?.length
       ? rules.manufacturerOptions
-      : (rules.manufacturers || []).map((id) => ({ id, manufacturerName: '' }))
+      : (rules.manufacturers || rules.manufacturerIds || []).map((id) =>
+          typeof id === 'object' ? id : { id, manufacturerName: '' }
+        )
   ).map(normalizeManufacturer);
-  const normalizedDivisions = normalizeExplicitScopeRules(rules.divisionRules || [], 'INCLUDE');
-  const normalizedProducts = normalizeExplicitScopeRules(rules.productRules || [], 'EXCLUDE');
+  const rawDivisions = rules.divisionRules || rules.divisionIds || rules.divisions || [];
+  const rawProducts = rules.productRules || rules.productIds || rules.products || [];
+  const normalizedDivisions = normalizeExplicitScopeRules(rawDivisions, 'INCLUDE');
+  const normalizedProducts = normalizeExplicitScopeRules(rawProducts, 'EXCLUDE');
 
   return {
     selectedManufacturers: seedMfrs,
@@ -184,38 +194,7 @@ function formatProductLabel(product) {
   return `${product.productName} (ID: ${product.id})`;
 }
 
-function isDivisionInProductScope(divisionId, {
-  productFilterDivisionIds,
-  selectedDivisionIds,
-  divisionOp,
-}) {
-  const normalizedDivisionId = toNumericId(divisionId);
-  if (!productFilterDivisionIds.length) {
-    return true;
-  }
-  if (divisionOp === 'INCLUDE') {
-    return selectedDivisionIds.some((id) => toNumericId(id) === normalizedDivisionId);
-  }
-  return productFilterDivisionIds.some((id) => toNumericId(id) === normalizedDivisionId);
-}
 
-function pruneProductSelections(
-  selectedIds,
-  selectedMeta,
-  scope,
-) {
-  const prunedIds = selectedIds.filter((id) => {
-    const meta = selectedMeta.get(id);
-    if (!meta?.divisionId) return true;
-    return isDivisionInProductScope(meta.divisionId, scope);
-  });
-  const nextMeta = new Map();
-  prunedIds.forEach((id) => {
-    const meta = selectedMeta.get(id);
-    if (meta) nextMeta.set(id, meta);
-  });
-  return { prunedIds, nextMeta };
-}
 
 export default function Step2Products({ state, updateProductRules, info, error }) {
   const [manufSearchText, setManufSearchText] = useState('');
@@ -252,6 +231,8 @@ export default function Step2Products({ state, updateProductRules, info, error }
   const [fetchError, setFetchError] = useState(null);
 
   const hasInitialized = useRef(false);
+  // Guards the emitting effect from wiping parent state during mount/hydration
+  const userInteractedRef = useRef(false);
   const emitReadyRef = useRef(false);
   const lastEmittedProductRulesRef = useRef(null);
   const suppressScopeResetRef = useRef(false);
@@ -259,6 +240,13 @@ export default function Step2Products({ state, updateProductRules, info, error }
   const pendingProductRuleIdsRef = useRef(null);
   const prevScopedDivisionKeyRef = useRef('');
   const selectedProductMetaRef = useRef(selectedProductMeta);
+  // Prevents the "search empty → clear manufacturerOptions" effect from running right
+  // after hydration seeds the options (search box is empty but we want to keep the chips).
+  const skipManufacturerOptionsResetRef = useRef(false);
+  // Holds the manufacturer IDs seeded at hydration time so division/product loads fire
+  // immediately without waiting for the 800 ms selectedManufacturerIds debounce.
+  const [hydratedManufacturerIds, setHydratedManufacturerIds] = useState([]);
+  const hydratedManufacturerIdsRef = useRef([]);
 
   const selectedProductRuleIdsRef = useRef(selectedProductRuleIds);
 
@@ -341,35 +329,6 @@ export default function Step2Products({ state, updateProductRules, info, error }
   );
   const debouncedScopeCountPayloadKey = useDebounce(scopeCountPayloadKey, 500);
 
-  const pinnedProductIdsKey = useMemo(
-    () => selectedProductRuleIds.join(','),
-    [selectedProductRuleIds],
-  );
-
-  const displayDivisionItems = useMemo(() => {
-    const pageIds = new Set(divisionListItems.map((division) => toNumericId(division.id)));
-    const selectedSet = new Set(selectedDivisionIds.map((id) => toNumericId(id)));
-
-    const offPageSelected = selectedDivisionIds
-      .map((id) => toNumericId(id))
-      .filter((id) => !pageIds.has(id))
-      .map((id) => {
-        const meta = selectedDivisionMeta.get(id);
-        return {
-          id,
-          divisionName: meta?.divisionName || `Division ID: ${id}`,
-          manufacturerId: meta?.manufacturerId,
-        };
-      });
-
-    const onPageSelected = divisionListItems.filter((division) =>
-      selectedSet.has(toNumericId(division.id)));
-    const onPageRest = divisionListItems.filter((division) =>
-      !selectedSet.has(toNumericId(division.id)));
-
-    return [...offPageSelected, ...onPageSelected, ...onPageRest];
-  }, [divisionListItems, selectedDivisionIds, selectedDivisionMeta]);
-
   const hasManufacturerFilter = selectedManufacturers.length > 0;
   const hasProductScope = hasManufacturerFilter;
   const sectionInfo = info ?? 'Search manufacturers to load products. Optionally narrow by divisions or explicit product rules.';
@@ -377,6 +336,10 @@ export default function Step2Products({ state, updateProductRules, info, error }
   useEffect(() => {
     const trimmedSearch = debouncedManufSearch.trim();
     if (!trimmedSearch) {
+      if (skipManufacturerOptionsResetRef.current) {
+        skipManufacturerOptionsResetRef.current = false;
+        return undefined;
+      }
       setManufacturerOptions([]);
       return undefined;
     }
@@ -410,7 +373,11 @@ export default function Step2Products({ state, updateProductRules, info, error }
   }, [debouncedManufSearch]);
 
   useEffect(() => {
-    if (!debouncedSelectedManufs.length) {
+    // Use hydrated IDs immediately (bypassing the 800 ms debounce) on initial mount.
+    const effectiveManufs = hydratedManufacturerIdsRef.current.length
+      ? hydratedManufacturerIdsRef.current
+      : (hydratedManufacturerIds.length ? hydratedManufacturerIds : debouncedSelectedManufs);
+    if (!effectiveManufs.length) {
       if (suppressScopeResetRef.current) {
         return undefined;
       }
@@ -427,7 +394,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
     suppressScopeResetRef.current = false;
 
     let cancelled = false;
-    integrationApi.getDivisions({ manufacturerIds: debouncedSelectedManufs.map(toNumericId) })
+    integrationApi.getDivisions({ manufacturerIds: effectiveManufs.map(toNumericId) })
       .then((response) => {
         if (cancelled) return;
         const { content } = unwrapPaginatedResponse(response.data);
@@ -437,9 +404,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
         if (pendingDivisionIdsRef.current) {
           const { ids: pendingIds, meta } = pendingDivisionIdsRef.current;
           pendingDivisionIdsRef.current = null;
-          const validIds = pendingIds
-            .map((id) => toNumericId(id))
-            .filter((id) => ids.some((scopeId) => toNumericId(scopeId) === id));
+          const validIds = pendingIds.map((id) => toNumericId(id));
           setSelectedDivisionIds(validIds);
           if (meta) setSelectedDivisionMeta(meta);
           return;
@@ -457,10 +422,21 @@ export default function Step2Products({ state, updateProductRules, info, error }
       });
 
     return () => { cancelled = true; };
-  }, [debouncedSelectedManufs]);
+  }, [debouncedSelectedManufs, hydratedManufacturerIds]);
+
+  // Once the debounce settles with real values, let it take over from the hydrated snapshot.
+  useEffect(() => {
+    if (debouncedSelectedManufs.length && hydratedManufacturerIds.length) {
+      setHydratedManufacturerIds([]);
+      hydratedManufacturerIdsRef.current = [];
+    }
+  }, [debouncedSelectedManufs, hydratedManufacturerIds]);
 
   useEffect(() => {
-    if (!debouncedSelectedManufs.length) {
+    const effectiveManufs = hydratedManufacturerIdsRef.current.length
+      ? hydratedManufacturerIdsRef.current
+      : (hydratedManufacturerIds.length ? hydratedManufacturerIds : debouncedSelectedManufs);
+    if (!effectiveManufs.length) {
       setDivisionListItems([]);
       setDivisionTotalCount(0);
       return undefined;
@@ -471,10 +447,11 @@ export default function Step2Products({ state, updateProductRules, info, error }
     setFetchError(null);
 
     integrationApi.getDivisions({
-      manufacturerIds: debouncedSelectedManufs.map(toNumericId),
+      manufacturerIds: effectiveManufs.map(toNumericId),
       searchKey: debouncedDivisionSearch,
       page: divisionPage,
       size: divisionRowsPerPage,
+      pinnedDivisionIds: selectedDivisionIds,
     })
       .then((response) => {
         if (cancelled) return;
@@ -519,6 +496,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
     return () => { cancelled = true; };
   }, [
     debouncedSelectedManufs,
+    hydratedManufacturerIds,
     debouncedDivisionSearch,
     divisionPage,
     divisionRowsPerPage,
@@ -528,35 +506,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
     setDivisionPage(0);
   }, [debouncedDivisionSearch, debouncedSelectedManufs]);
 
-  useEffect(() => {
-    if (!hasProductScope) {
-      prevScopedDivisionKeyRef.current = '';
-      return undefined;
-    }
 
-    const scopeKey = productFilterDivisionKey;
-    if (
-      prevScopedDivisionKeyRef.current
-      && prevScopedDivisionKeyRef.current !== scopeKey
-      && !pendingProductRuleIdsRef.current
-    ) {
-      const scope = {
-        productFilterDivisionIds,
-        selectedDivisionIds,
-        divisionOp,
-      };
-      const { prunedIds, nextMeta } = pruneProductSelections(
-        selectedProductRuleIdsRef.current,
-        selectedProductMetaRef.current,
-        scope,
-      );
-      setSelectedProductRuleIds(prunedIds);
-      setSelectedProductMeta(nextMeta);
-      setProductPage(0);
-    }
-    prevScopedDivisionKeyRef.current = scopeKey;
-    return undefined;
-  }, [hasProductScope, productFilterDivisionKey, productFilterDivisionIds, selectedDivisionIds, divisionOp]);
 
   useEffect(() => {
     if (!hasProductScope) {
@@ -569,9 +519,12 @@ export default function Step2Products({ state, updateProductRules, info, error }
     setProductLoading(true);
     setFetchError(null);
 
+    const effectiveManufs = hydratedManufacturerIdsRef.current.length
+      ? hydratedManufacturerIdsRef.current
+      : (hydratedManufacturerIds.length ? hydratedManufacturerIds : debouncedSelectedManufs);
     integrationApi.searchProducts({
       searchKey: debouncedProductRuleSearch,
-      manufacturerIds: debouncedSelectedManufs.map(toNumericId),
+      manufacturerIds: effectiveManufs.map(toNumericId),
       divisionIds: productFilterDivisionIds.map(toNumericId),
       page: productPage,
       size: productRowsPerPage,
@@ -617,11 +570,11 @@ export default function Step2Products({ state, updateProductRules, info, error }
   }, [
     hasProductScope,
     debouncedSelectedManufs,
+    hydratedManufacturerIds,
     productFilterDivisionKey,
     debouncedProductRuleSearch,
     productPage,
     productRowsPerPage,
-    pinnedProductIdsKey,
   ]);
 
   useEffect(() => {
@@ -673,16 +626,46 @@ export default function Step2Products({ state, updateProductRules, info, error }
   }, [debouncedScopeCountPayloadKey]);
 
   useLayoutEffect(() => {
-    if (hasInitialized.current) return;
-
     const rules = state.productRules || EMPTY_RULES;
-    if (hasSavedProductRules(rules)) {
+    const hasRulesToHydrate = hasSavedProductRules(rules);
+
+    // If we already hydrated populated data, DO NOT re-run.
+    if (hasInitialized.current && selectedManufacturers.length > 0) return;
+    // If we initialized empty and the incoming rules are STILL empty, DO NOT re-run.
+    if (hasInitialized.current && !hasRulesToHydrate) return;
+
+    if (hasRulesToHydrate) {
       const mapped = mapSharedRulesToLocalState(rules);
       setSelectedManufacturers(mapped.selectedManufacturers);
       setSelectedDivisionIds(mapped.selectedDivisionIds);
       setSelectedDivisionMeta(mapped.selectedDivisionMeta || new Map());
+      setSelectedProductRuleIds(mapped.selectedProductRuleIds);
+      setSelectedProductMeta(mapped.selectedProductMeta || new Map());
       setDivisionOp(mapped.divisionOp);
       setProductOp(mapped.productOp);
+
+      // Fetch any missing manufacturer names from backend if hydrated with empty names
+      const missingNameIds = mapped.selectedManufacturers
+        .filter((m) => !m.manufacturerName || !m.manufacturerName.trim())
+        .map((m) => toNumericId(m.id));
+      if (missingNameIds.length > 0) {
+        integrationApi.getManufacturersByIds(missingNameIds)
+          .then((res) => {
+            const list = Array.isArray(res.data) ? res.data : (res.data?.content || []);
+            if (!list.length) return;
+            const nameMap = new Map(list.map((m) => [toNumericId(m.id), m.manufacturerName || m.name || '']));
+            setSelectedManufacturers((prev) => prev.map((m) => {
+              const name = nameMap.get(toNumericId(m.id));
+              return name ? { ...m, manufacturerName: name } : m;
+            }));
+            setManufacturerOptions((prev) => prev.map((m) => {
+              const name = nameMap.get(toNumericId(m.id));
+              return name ? { ...m, manufacturerName: name } : m;
+            }));
+          })
+          .catch(() => {});
+      }
+
       if (mapped.selectedDivisionIds.length) {
         pendingDivisionIdsRef.current = {
           ids: mapped.selectedDivisionIds,
@@ -699,22 +682,32 @@ export default function Step2Products({ state, updateProductRules, info, error }
       }
       if (mapped.selectedManufacturers.length) {
         suppressScopeResetRef.current = true;
+        // Immediately provide manufacturer IDs to division/product effects so they
+        // don't have to wait for the 800 ms selectedManufacturerIds debounce.
+        const mfIds = mapped.selectedManufacturers.map((m) => toNumericId(m.id));
+        hydratedManufacturerIdsRef.current = mfIds;
+        setHydratedManufacturerIds(mfIds);
+        // Prevent the "search box empty" effect from wiping these options on first render.
+        skipManufacturerOptionsResetRef.current = true;
       }
       setManufacturerOptions(mapped.selectedManufacturers);
-    }
 
-    hasInitialized.current = true;
-    emitReadyRef.current = true;
-    lastEmittedProductRulesRef.current = serializeProductRulesPatch({
-      manufacturers: state.productRules?.manufacturers ?? [],
-      manufacturerOptions: state.productRules?.manufacturerOptions ?? [],
-      divisionRules: state.productRules?.divisionRules ?? [],
-      productRules: state.productRules?.productRules ?? [],
-    });
+      hasInitialized.current = true;
+      lastEmittedProductRulesRef.current = serializeProductRulesPatch({
+        manufacturers: mapped.selectedManufacturers.map((m) => toNumericId(m.id)),
+        manufacturerOptions: mapped.selectedManufacturers,
+        divisionRules: rules.divisionRules ?? [],
+        productRules: rules.productRules ?? [],
+      });
+    } else {
+      hasInitialized.current = true;
+    }
   }, [state.productRules]);
 
   useEffect(() => {
-    if (!emitReadyRef.current) return;
+    // STRICT GUARD: Never emit to parent during initial mount or hydration!
+    if (!userInteractedRef.current) return;
+
     if (
       suppressScopeResetRef.current
       && !explicitDivisionRules.length
@@ -761,6 +754,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
   ), []);
 
   const handleManufacturersChange = useCallback((selected) => {
+    userInteractedRef.current = true;
     const nextManufacturers = Array.isArray(selected) ? selected.map(normalizeManufacturer) : [];
     const nextManufacturerIdSet = new Set(
       nextManufacturers.map((manufacturer) => toNumericId(manufacturer.id)),
@@ -813,10 +807,12 @@ export default function Step2Products({ state, updateProductRules, info, error }
   }, [selectedManufacturers, selectedDivisionMeta, selectedProductMeta]);
 
   const handleManufacturerSearch = useCallback((query) => {
-    setManufSearchText(query);
+    setManufSearchText(query ?? '');
   }, []);
 
+
   const toggleDivision = useCallback((division) => {
+    userInteractedRef.current = true;
     const id = toNumericId(division.id);
     setSelectedDivisionIds((prev) =>
       prev.includes(id) ? prev.filter((divisionId) => divisionId !== id) : [...prev, id],
@@ -834,9 +830,14 @@ export default function Step2Products({ state, updateProductRules, info, error }
       }
       return next;
     });
+
+    setSelectedProductRuleIds([]);
+    setSelectedProductMeta(new Map());
+    setProductPage(0);
   }, []);
 
   const toggleProductRule = useCallback((product) => {
+    userInteractedRef.current = true;
     const id = product.id;
     setSelectedProductRuleIds((prev) =>
       prev.includes(id) ? prev.filter((productId) => productId !== id) : [...prev, id],
@@ -856,6 +857,45 @@ export default function Step2Products({ state, updateProductRules, info, error }
       return next;
     });
   }, []);
+
+  const combinedProductItems = useMemo(() => {
+    const optionMap = new Map();
+    (productListItems || []).forEach(p => optionMap.set(p.productId || p.id, p));
+    (selectedProductRuleIds || []).forEach(id => {
+      if (!optionMap.has(id)) {
+        const meta = selectedProductMeta.get(id);
+        if (meta) {
+          optionMap.set(id, {
+            id: meta.id,
+            productId: meta.id,
+            productName: meta.productName,
+            divisionId: meta.divisionId,
+            manufacturerId: meta.manufacturerId,
+          });
+        }
+      }
+    });
+    return Array.from(optionMap.values());
+  }, [productListItems, selectedProductRuleIds, selectedProductMeta]);
+
+  const combinedDivisionItems = useMemo(() => {
+    const optionMap = new Map();
+    (divisionListItems || []).forEach((d) => optionMap.set(toNumericId(d.id), d));
+    (selectedDivisionIds || []).forEach((id) => {
+      const numericId = toNumericId(id);
+      if (!optionMap.has(numericId)) {
+        const meta = selectedDivisionMeta.get(numericId);
+        if (meta) {
+          optionMap.set(numericId, {
+            id: meta.id,
+            divisionName: meta.divisionName || `Division ${meta.id}`,
+            manufacturerId: meta.manufacturerId,
+          });
+        }
+      }
+    });
+    return Array.from(optionMap.values());
+  }, [divisionListItems, selectedDivisionIds, selectedDivisionMeta]);
 
   return (
     <Box>
@@ -903,7 +943,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
               loading={manufacturerSearchLoading}
               getOptionLabel={(option) => `${option.manufacturerName || ''} (ID: ${option.id})`}
               renderOption={renderManufacturerOption}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
+              isOptionEqualToValue={(option, value) => toNumericId(option.id) === toNumericId(value.id)}
               maxVisibleChips={2}
             />
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
@@ -920,7 +960,13 @@ export default function Step2Products({ state, updateProductRules, info, error }
               2. Select Divisions ({selectedDivisionIds.length})
             </Typography>
             <FormControl size="small" sx={{ ...ruleSelectSx, mb: 1 }} disabled={!hasManufacturerFilter}>
-              <Select value={divisionOp} onChange={(event) => setDivisionOp(event.target.value)}>
+              <Select value={divisionOp} onChange={(event) => {
+                userInteractedRef.current = true;
+                setDivisionOp(event.target.value);
+                setSelectedProductRuleIds([]);
+                setSelectedProductMeta(new Map());
+                setProductPage(0);
+              }}>
                 <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
                 <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
               </Select>
@@ -941,8 +987,12 @@ export default function Step2Products({ state, updateProductRules, info, error }
                 variant="text"
                 sx={headerActionButtonSx}
                 onClick={() => {
+                  userInteractedRef.current = true;
                   setSelectedDivisionIds([]);
                   setSelectedDivisionMeta(new Map());
+                  setSelectedProductRuleIds([]);
+                  setSelectedProductMeta(new Map());
+                  setProductPage(0);
                 }}
                 disabled={!selectedDivisionIds.length}
               >
@@ -967,7 +1017,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
               </Typography>
             ) : (
               <ScrollableCheckboxList
-                items={displayDivisionItems}
+                items={combinedDivisionItems}
                 getItemId={(division) => division.id}
                 getItemLabel={formatDivisionLabel}
                 selectedIds={selectedDivisionIds}
@@ -996,7 +1046,10 @@ export default function Step2Products({ state, updateProductRules, info, error }
             <FormControl size="small" sx={{ ...ruleSelectSx, mb: 1 }} disabled={!hasProductScope}>
               <Select
                 value={productOp}
-                onChange={(event) => setProductOp(event.target.value)}
+                onChange={(event) => {
+                  userInteractedRef.current = true;
+                  setProductOp(event.target.value);
+                }}
               >
                 <MenuItem value="INCLUDE">Rule: Include Selected</MenuItem>
                 <MenuItem value="EXCLUDE">Rule: Exclude Selected</MenuItem>
@@ -1018,6 +1071,7 @@ export default function Step2Products({ state, updateProductRules, info, error }
                 variant="text"
                 sx={headerActionButtonSx}
                 onClick={() => {
+                  userInteractedRef.current = true;
                   setSelectedProductRuleIds([]);
                   setSelectedProductMeta(new Map());
                 }}
@@ -1035,15 +1089,15 @@ export default function Step2Products({ state, updateProductRules, info, error }
               <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                 Select manufacturer(s) to load products
               </Typography>
-            ) : productListItems.length === 0 ? (
+            ) : combinedProductItems.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                 No products match search
               </Typography>
             ) : (
               <ScrollableCheckboxList
-                items={productListItems}
-                getItemId={(product) => product.id}
-                getItemLabel={formatProductLabel}
+                items={combinedProductItems}
+                getItemId={(product) => product.productId || product.id || product.code}
+                getItemLabel={(product) => product.productName || product.name || product.label || String(product.productId || product.id || product.code)}
                 selectedIds={selectedProductRuleIds}
                 onToggle={toggleProductRule}
               />

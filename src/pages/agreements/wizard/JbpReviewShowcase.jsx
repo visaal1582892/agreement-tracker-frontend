@@ -15,6 +15,7 @@ export default function JbpReviewShowcase({
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [stagedWorkbook, setStagedWorkbook] = useState(null);
+  const [configurations, setConfigurations] = useState(null);
 
   const hasMemory = Boolean(memoryStagedWorkbook?.sheets?.length);
 
@@ -38,11 +39,22 @@ export default function JbpReviewShowcase({
       try {
         const data = await fetchJbpStructure(agreementVersionId);
         if (!cancelled) {
-          setStagedWorkbook(data?.stagedWorkbook ?? null);
+          // Backend returns stagedWorkbooks as a Map<String, JbpStagedWorkbookDto>.
+          // Merge all per-config workbooks into a single stagedWorkbook state object.
+            setConfigurations(data?.configurations ?? null);
+            if (data?.stagedWorkbooks && Object.keys(data.stagedWorkbooks).length > 0) {
+              const allSheets = Object.values(data.stagedWorkbooks)
+                .flatMap((wb) => wb?.sheets ?? [])
+                .filter(Boolean);
+              setStagedWorkbook(allSheets.length > 0 ? { sheets: allSheets } : null);
+            } else {
+              setStagedWorkbook(data?.stagedWorkbook ?? null);
+            }
         }
       } catch (err) {
         if (!cancelled) {
           setStagedWorkbook(null);
+          setConfigurations(null);
           if (err?.response?.status !== 404) {
             enqueueSnackbar(
               await extractApiErrorMessage(err, 'Failed to load JBP structure'),
@@ -112,6 +124,7 @@ export default function JbpReviewShowcase({
   return (
     <JbpMatrixReviewTable
       stagedWorkbook={stagedWorkbook}
+      configurations={configurations}
       title={null}
       financialYearStartMonth={financialYearStartMonth}
     />

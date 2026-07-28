@@ -7,11 +7,9 @@ import { alpha } from '@mui/material/styles';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { BRAND } from '../../config/theme';
 import {
-  formatCreditNote,
   formatFinalOffer,
   formatMoney,
   formatPercent,
-  resolveLocationAllocation,
 } from '../../api/priceOffsApi';
 
 function SectionCard({ title, children }) {
@@ -52,9 +50,6 @@ export default function PriceOffDetailDrawer({
 }) {
   if (!campaign) return null;
 
-  const allocationEntries = Object.entries(campaign.locationAllocations ?? {})
-    .filter(([, qty]) => Number(qty) > 0)
-    .sort(([left], [right]) => left.localeCompare(right));
 
   return (
     <Drawer
@@ -157,55 +152,6 @@ export default function PriceOffDetailDrawer({
             </SectionCard>
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
-            <SectionCard title="Location Allocations">
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <KvRow label="Total Qty" value={campaign.totalQty ?? '—'} />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <KvRow label="Credit Note" value={formatCreditNote(campaign.creditNote)} />
-                </Grid>
-              </Grid>
-
-              {allocationEntries.length > 0 ? (
-                <>
-                  <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.75, mb: 2 }}>
-                    {allocationEntries.map(([code, qty]) => (
-                      <Chip
-                        key={code}
-                        label={`${code}: ${qty}`}
-                        size="small"
-                        sx={{
-                          bgcolor: alpha(BRAND.red, 0.08),
-                          color: BRAND.redDark,
-                          fontWeight: 600,
-                        }}
-                      />
-                    ))}
-                  </Stack>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 700 }}>Zone</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700 }}>Qty</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {allocationEntries.map(([code, qty]) => (
-                        <TableRow key={code}>
-                          <TableCell>{code}</TableCell>
-                          <TableCell align="right">{resolveLocationAllocation(campaign, code) || qty}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </>
-              ) : (
-                <Typography variant="body2" color="text.secondary">No zone allocations recorded.</Typography>
-              )}
-            </SectionCard>
-          </Grid>
         </Grid>
 
         {allowCampaignIdEdit && (

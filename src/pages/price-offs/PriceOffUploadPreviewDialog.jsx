@@ -14,9 +14,8 @@ import {
   Typography,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { formatPercent } from '../../api/priceOffsApi';
+import { formatPercent, formatPercentOff } from '../../api/priceOffsApi';
 import { BRAND } from '../../config/theme';
-import { calculateFinalMarginFraction } from '../../utils/priceOffCalculations';
 
 export default function PriceOffUploadPreviewDialog({
   open,
@@ -71,6 +70,7 @@ export default function PriceOffUploadPreviewDialog({
                 <TableCell>End</TableCell>
                 <TableCell>CP</TableCell>
                 <TableCell>MRP</TableCell>
+                <TableCell>% Off</TableCell>
                 <TableCell>Final Margin</TableCell>
                 <TableCell>Errors</TableCell>
               </TableRow>
@@ -94,14 +94,9 @@ export default function PriceOffUploadPreviewDialog({
                   <TableCell>{row.endDate || '—'}</TableCell>
                   <TableCell>{row.cp ?? '—'}</TableCell>
                   <TableCell>{row.mrp ?? '—'}</TableCell>
+                  <TableCell>{formatPercentOff(row.percentOff)}</TableCell>
                   <TableCell>
-                    {formatPercent(calculateFinalMarginFraction({
-                      discountType: row.discountType,
-                      discountTypeLabel: row.discountTypeLabel,
-                      cp: row.cp,
-                      mrp: row.mrp,
-                      medplusContribution: row.medplusContribution,
-                    }) ?? row.finalMarginPercent)}
+                    {formatPercent(row.finalMarginPercent)}
                   </TableCell>
                   <TableCell>
                     {(row.errors ?? []).length

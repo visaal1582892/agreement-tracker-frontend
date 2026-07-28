@@ -84,29 +84,81 @@ const INITIAL_STATE = {
 };
 
 export function mapProductRulesFromApi(agreement) {
+  if (!agreement) {
+    return {
+      manufacturers: [],
+      manufacturerOptions: [],
+      divisionRules: [],
+      productRules: [],
+      computedProductPreview: [],
+      productScopeComputeStatus: null,
+      productScopeComputeError: null,
+    };
+  }
+
+  let rawMfrs = agreement.manufacturers;
+  if (!Array.isArray(rawMfrs) || rawMfrs.length === 0) {
+    rawMfrs = agreement.manufacturerIds ?? [];
+  }
+  if ((!Array.isArray(rawMfrs) || rawMfrs.length === 0) && Array.isArray(agreement.products)) {
+    const derivedFromProducts = agreement.products
+      .filter((p) => p && (p.manufacturerId || p.manufacturerName))
+      .map((p) => ({
+        id: p.manufacturerId || p.id,
+        manufacturerName: p.manufacturerName || '',
+      }));
+    if (derivedFromProducts.length > 0) {
+      const seen = new Set();
+      rawMfrs = derivedFromProducts.filter((m) => {
+        if (!m.id || seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
+    }
+  }
+  if (!Array.isArray(rawMfrs)) {
+    rawMfrs = [];
+  }
+
+  const manufacturers = rawMfrs
+    .map((m) => (typeof m === 'object' && m !== null ? (m.id ?? m.manufacturerId) : m))
+    .filter((id) => id != null);
+
+  const manufacturerOptions = rawMfrs
+    .map((m) => {
+      if (typeof m === 'object' && m !== null) {
+        return {
+          id: m.id ?? m.manufacturerId,
+          manufacturerName: m.manufacturerName || m.name || '',
+        };
+      }
+      return {
+        id: m,
+        manufacturerName: '',
+      };
+    })
+    .filter((m) => m.id != null);
+
   return {
-    manufacturers: agreement.manufacturers?.map((m) => m.id) ?? agreement.manufacturerIds ?? [],
-    manufacturerOptions: agreement.manufacturers?.map((m) => ({
-      id: m.id,
-      manufacturerName: m.name,
-    })) ?? [],
-    divisionRules: agreement.divisionRules?.map((r) => ({
-      id: r.id,
+    manufacturers,
+    manufacturerOptions,
+    divisionRules: (agreement.divisionRules ?? []).map((r) => ({
+      id: r.id ?? r.divisionId,
       ruleType: r.ruleType,
-      name: r.name,
-    })) ?? [],
-    productRules: agreement.productRules?.map((r) => ({
-      id: r.id,
+      name: r.name ?? r.divisionName ?? '',
+    })),
+    productRules: (agreement.productRules ?? []).map((r) => ({
+      id: r.id ?? r.productId,
       ruleType: r.ruleType,
-      name: r.name,
-    })) ?? [],
-    computedProductPreview: agreement.products?.map((product) => ({
-      productId: product.productId,
+      name: r.name ?? r.productName ?? '',
+    })),
+    computedProductPreview: (agreement.products ?? []).map((product) => ({
+      productId: product.productId ?? product.id,
       productName: product.productName,
       divisionName: product.divisionName,
-    })) ?? [],
-    productScopeComputeStatus: agreement.productScopeComputeStatus,
-    productScopeComputeError: agreement.productScopeComputeError,
+    })),
+    productScopeComputeStatus: agreement.productScopeComputeStatus ?? null,
+    productScopeComputeError: agreement.productScopeComputeError ?? null,
   };
 }
 

@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  MenuItem, TextField, Typography, Paper,
+  MenuItem, TextField, Typography, Paper, InputAdornment
 } from '@mui/material';
 import { BRAND } from '../../config/theme';
-import {
-  formatCreditNote,
-  formatFinalOffer,
-  formatPercent,
-  resolveLocationAllocation,
-} from '../../api/priceOffsApi';
 import { calculateDerivedFields } from '../../utils/priceOffCalculations';
 
 const DISCOUNT_TYPE_OPTIONS = [
@@ -32,16 +26,7 @@ export default function PriceOffEditDialog({
   onSave,
 }) {
   const [form, setForm] = useState(null);
-  const [allocations, setAllocations] = useState({});
 
-  const editableLocationCodes = useMemo(() => {
-    if (!campaign) return [];
-    const activeCodes = locations.filter((loc) => loc.isActive).map((loc) => loc.code);
-    const existingCodes = Object.entries(campaign.locationAllocations ?? {})
-      .filter(([, qty]) => Number(qty) > 0)
-      .map(([code]) => code);
-    return [...new Set([...activeCodes, ...existingCodes])].sort();
-  }, [campaign, locations]);
 
   useEffect(() => {
     if (!open || !campaign) return;
@@ -59,38 +44,8 @@ export default function PriceOffEditDialog({
       maxUnitCap: campaign.maxUnitCap ?? '',
       remarks: campaign.remarks ?? '',
     });
-    const initialAllocations = {};
-    editableLocationCodes.forEach((code) => {
-      const qty = resolveLocationAllocation(campaign, code);
-      initialAllocations[code] = qty > 0 ? String(qty) : '';
-    });
-    setAllocations(initialAllocations);
-  }, [open, campaign, editableLocationCodes]);
+  }, [open, campaign]);
 
-  const derived = useMemo(() => {
-    if (!form) {
-      return {
-        totalQty: 0,
-        creditNote: 0,
-        durationMonths: 1,
-        marginPercent: null,
-        finalOffer: null,
-        percentOff: null,
-        finalMarginPercent: null,
-      };
-    }
-    return calculateDerivedFields({
-      discountType: form.discountType,
-      discountTypeLabel: DISCOUNT_TYPE_OPTIONS.find((option) => option.value === form.discountType)?.label,
-      cp: form.cp,
-      mrp: form.mrp,
-      baseOffer: form.baseOffer,
-      medplusContribution: form.medplusContribution,
-      allocations,
-      startDate: form.startDate,
-      endDate: form.endDate,
-    });
-  }, [form, allocations]);
 
   if (!campaign || !form) return null;
 
@@ -98,19 +53,21 @@ export default function PriceOffEditDialog({
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const updateAllocation = (code, value) => {
-    setAllocations((prev) => ({ ...prev, [code]: value }));
-  };
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    const locationAllocations = {};
-    Object.entries(allocations).forEach(([code, value]) => {
-      const qty = Number(value);
-      if (!Number.isNaN(qty) && qty > 0) {
-        locationAllocations[code] = qty;
-      }
+  const derived = useMemo(() => {
+    if (!form) return null;
+    return calculateDerivedFields({
+      discountType: form.discountType,
+      discountTypeLabel: DISCOUNT_TYPE_OPTIONS.find(o => o.value === form.discountType)?.label,
+      cp: form.cp,
+      mrp: form.mrp,
+      baseOffer: form.baseOffer,
+      medplusContribution: form.medplusContribution,
+      allocations: campaign.locationAllocations || {},
+      startDate: form.startDate,
+      endDate: form.endDate,
     });
+  }, [form, campaign]);  const handleSubmit = (event) => {
+    event.preventDefault();
     onSave({
       startDate: form.startDate,
       endDate: form.endDate,
@@ -126,7 +83,13 @@ export default function PriceOffEditDialog({
       fromQty: form.fromQty === '' ? null : Number(form.fromQty),
       maxUnitCap: form.maxUnitCap === '' ? null : Number(form.maxUnitCap),
       remarks: form.remarks?.trim() || null,
-      locationAllocations,
+      locationAllocations: campaign.locationAllocations || {},
+      marginPercent: derived?.marginPercent,
+      finalOffer: derived?.finalOffer,
+      percentOff: derived?.percentOff,
+      finalMarginPercent: derived?.finalMarginPercent,
+      creditNote: derived?.creditNote,
+      totalQty: derived?.totalQty,
     });
   };
 
@@ -135,43 +98,6 @@ export default function PriceOffEditDialog({
       <Box component="form" onSubmit={handleSubmit}>
         <DialogTitle>Edit Draft Campaign</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-              Auto-calculated Preview
-            </Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)' }, gap: 1.5 }}>
-              <Box>
-                <Typography variant="caption" color="text.secondary">Total Qty</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{derived.totalQty || '—'}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">Credit Note</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{formatCreditNote(derived.creditNote)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">Duration (Months)</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{derived.durationMonths ?? '—'}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">Margin %</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{formatPercent(derived.marginPercent)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">Final Offer</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {formatFinalOffer(derived.finalOffer, form.discountType)}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">% Off</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{formatPercent(derived.percentOff)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">Final Margin %</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{formatPercent(derived.finalMarginPercent)}</Typography>
-              </Box>
-            </Box>
-          </Paper>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
             <TextField
               label="Start Date"
@@ -253,20 +179,49 @@ export default function PriceOffEditDialog({
             multiline
             minRows={2}
           />
-          <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Zone Allocations</Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5 }}>
-              {editableLocationCodes.map((code) => (
-                <TextField
-                  key={code}
-                  label={code}
-                  type="number"
-                  size="small"
-                  value={allocations[code] ?? ''}
-                  onChange={(e) => updateAllocation(code, e.target.value)}
-                />
-              ))}
-            </Box>
+          
+          <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>Calculated Fields (Read Only)</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+            <TextField 
+              label="Margin %" 
+              value={derived?.marginPercent ?? '—'} 
+              slotProps={{ input: { readOnly: true }, htmlInput: { style: { backgroundColor: '#f5f5f5' } } }} 
+              InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+              fullWidth 
+            />
+            <TextField 
+              label="Final Offer" 
+              value={derived?.finalOffer ?? '—'} 
+              slotProps={{ input: { readOnly: true }, htmlInput: { style: { backgroundColor: '#f5f5f5' } } }} 
+              InputProps={{ endAdornment: form.discountType === 'DISC_PERCENT' ? <InputAdornment position="end">%</InputAdornment> : null }}
+              fullWidth 
+            />
+            <TextField 
+              label="% Off" 
+              value={derived?.percentOff ?? '—'} 
+              slotProps={{ input: { readOnly: true }, htmlInput: { style: { backgroundColor: '#f5f5f5' } } }} 
+              InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+              fullWidth 
+            />
+            <TextField 
+              label="Final Margin %" 
+              value={derived?.finalMarginPercent ?? '—'} 
+              slotProps={{ input: { readOnly: true }, htmlInput: { style: { backgroundColor: '#f5f5f5' } } }} 
+              InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+              fullWidth 
+            />
+            <TextField 
+              label="Credit Note" 
+              value={derived?.creditNote ?? '—'} 
+              slotProps={{ input: { readOnly: true }, htmlInput: { style: { backgroundColor: '#f5f5f5' } } }} 
+              fullWidth 
+            />
+            <TextField 
+              label="Total Qty" 
+              value={derived?.totalQty ?? '—'} 
+              slotProps={{ input: { readOnly: true }, htmlInput: { style: { backgroundColor: '#f5f5f5' } } }} 
+              fullWidth 
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

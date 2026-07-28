@@ -421,7 +421,7 @@ export default function WizardReviewContent({
                     {loadingStores ? (
                       <Typography variant="body2" color="text.secondary">Loading stores…</Typography>
                     ) : (
-                      <StoreMappingReviewSummary stores={storeMappings} />
+                      <StoreMappingReviewSummary stores={storeMappings} versionId={version?.id || serverAgreementId} />
                     )}
                   </Box>
                 </Box>

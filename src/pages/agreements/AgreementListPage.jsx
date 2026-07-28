@@ -223,8 +223,8 @@ export default function AgreementListPage() {
           '& .MuiTabs-indicator': { bgcolor: BRAND.red },
         }}
       >
-        <Tab label="Agreement Groups" value={PAGE_TAB.GROUPS} />
         <Tab label="All Agreements" value={PAGE_TAB.AGREEMENTS} />
+        <Tab label="Agreement Groups" value={PAGE_TAB.GROUPS} />
       </Tabs>
 
       {pageTab === PAGE_TAB.GROUPS ? (

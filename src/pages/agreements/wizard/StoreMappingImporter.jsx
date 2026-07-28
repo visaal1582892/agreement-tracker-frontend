@@ -34,29 +34,56 @@ export default function StoreMappingImporter({
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [search, setSearch] = useState('');
+  const [totalElements, setTotalElements] = useState(0);
+
   const loadStores = useCallback(async () => {
     if (!agreementVersionId) {
       setStores([]);
+      setTotalElements(0);
       onMappingsChange?.([]);
       return;
     }
     setLoading(true);
     try {
-      const data = await fetchStoreMappings(agreementVersionId);
-      const list = Array.isArray(data) ? data : [];
+      const response = await fetchStoreMappings(agreementVersionId, {
+        page: page,
+        size: rowsPerPage,
+        search: search || undefined
+      });
+      let list = [];
+      let total = 0;
+      if (Array.isArray(response)) {
+        list = response;
+        total = response.length;
+      } else if (response && Array.isArray(response.content)) {
+        list = response.content;
+        total = response.totalElements ?? response.content.length;
+      } else if (response && Array.isArray(response.data)) {
+        list = response.data;
+        total = response.totalElements ?? response.data.length;
+      }
       setStores(list);
+      setTotalElements(total);
       setSelectedIds(new Set());
-      onMappingsChange?.(list);
+      
+      const mockList = new Array(total).fill({});
+      onMappingsChange?.(mockList);
     } catch {
       enqueueSnackbar('Unable to load mapped stores', { variant: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [agreementVersionId, enqueueSnackbar, onMappingsChange]);
+  }, [agreementVersionId, page, rowsPerPage, search, enqueueSnackbar, onMappingsChange]);
 
   useEffect(() => {
-    loadStores();
-  }, [loadStores]);
+    const timer = setTimeout(() => {
+      loadStores();
+    }, search ? 300 : 0); // Debounce search
+    return () => clearTimeout(timer);
+  }, [loadStores, page, rowsPerPage, search]);
 
   const handleDownloadTemplate = async () => {
     if (!agreementVersionId) {
@@ -232,16 +259,12 @@ export default function StoreMappingImporter({
         </Alert>
       )}
 
-      {/* Main Data Table Area */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={28} />
-        </Box>
-      ) : stores.length > 0 ? (
+      {/* Main Data Table Area - Always kept mounted when agreementVersionId is present */}
+      {Boolean(agreementVersionId) && (
         <Box sx={{ mt: 1 }}>
           <StoreMappingTable
             stores={stores}
-            // Defensive Prop-Bridging for both new MUI Table spec & old legacy table spec:
+            loading={loading}
             selected={Array.from(selectedIds)}
             selectedIds={selectedIds}
             onSelectRow={toggleRow}
@@ -251,9 +274,23 @@ export default function StoreMappingImporter({
             onBulkDelete={handleDeleteSelected}
             deleting={deleting}
             selectable={true}
+            // Pagination & Search
+            page={page}
+            rowsPerPage={rowsPerPage}
+            totalElements={totalElements}
+            onPageChange={(e, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+            }}
+            search={search}
+            onSearchChange={(val) => {
+              setSearch(val);
+              setPage(0);
+            }}
           />
         </Box>
-      ) : null}
+      )}
 
     </Box>
   );

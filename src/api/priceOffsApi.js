@@ -1,6 +1,7 @@
 import axiosInstance from './axiosInstance';
 import { ENDPOINTS } from '../config/endpoints';
 import { downloadBlob } from './commercialApi';
+import { parseBlobJson } from './jbpApi';
 
 export async function downloadPriceOffTemplate() {
   const response = await axiosInstance.get(ENDPOINTS.PRICE_OFFS_TEMPLATE, {
@@ -15,6 +16,9 @@ export function isPriceOffValidationErrorBlob(error) {
     return false;
   }
   const type = blob.type || '';
+  if (type.includes('json')) {
+    return false;
+  }
   return type.includes('spreadsheetml')
     || type.includes('octet-stream')
     || error?.response?.status === 422;
@@ -35,8 +39,9 @@ export async function previewPriceOffCampaigns(file) {
   formData.append('file', file);
   const response = await axiosInstance.post(ENDPOINTS.PRICE_OFFS_PREVIEW, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    responseType: 'blob',
   });
-  return response.data;
+  return parseBlobJson(response.data);
 }
 
 export async function commitPriceOffCampaigns(rows) {
@@ -142,7 +147,14 @@ export function formatPercent(value) {
   if (value == null || value === '') return '—';
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return '—';
-  return `${(numeric * 100).toFixed(2)}%`;
+  return `${numeric.toFixed(2)}%`;
+}
+
+export function formatPercentOff(value) {
+  if (value == null || value === '') return '—';
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return '—';
+  return `${numeric.toFixed(2)}%`;
 }
 
 export function formatMoney(value) {
@@ -178,8 +190,7 @@ export function formatFinalOffer(value, discountType) {
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return '—';
   if (discountType === 'DISC_PERCENT') {
-    const percent = numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
-    return `${percent.toFixed(2)}%`;
+    return `${numeric.toFixed(2)}%`;
   }
   return formatRupee(value);
 }

@@ -97,6 +97,7 @@ export const ENDPOINTS = {
   STATES: `${BASE}/master/states`,
 
   INTEGRATION_MANUFACTURERS: `${BASE}/integration/manufacturers`,
+  INTEGRATION_MANUFACTURERS_BY_IDS: `${BASE}/integration/manufacturers/by-ids`,
   INTEGRATION_DIVISIONS: `${BASE}/integration/divisions`,
   INTEGRATION_PRODUCTS: `${BASE}/integration/products`,
   INTEGRATION_VENDORS: `${BASE}/integration/vendors`,

@@ -43,8 +43,9 @@ export function resolveChildFrequencies(selectedFrequencies, masterFrequency) {
 export function createJbpConfig(index = 1) {
   return {
     id: String(index),
-    parentPeriodIds: [],
-    slabCount: 1,
+    paymentIntervals: [],
+    targetIntervals: [],
+    maxSlabs: 1,
   };
 }
 
@@ -52,8 +53,9 @@ export function mapConfigurationsFromApi(configurations) {
   if (!Array.isArray(configurations) || configurations.length === 0) return null;
   return configurations.map((config, index) => ({
     id: config.configId ?? String(index + 1),
-    parentPeriodIds: config.parentPeriodIds ?? [],
-    slabCount: config.slabCount ?? 1,
+    paymentIntervals: config.paymentIntervals ?? [],
+    targetIntervals: config.targetIntervals ?? [],
+    maxSlabs: config.maxSlabs ?? 1,
   }));
 }
 
@@ -96,7 +98,7 @@ export function resolveJbpReviewHeaders(sheet) {
       parentPeriod: null,
       subPeriod: null,
       slabTier: 'Slab Tier',
-      targetType: 'Target Type',
+      targetType: null, // Hardcoded absolute on backend for master sheets
       target: 'Target',
       qualifierPercent: 'Qualifier %',
       payoutType: 'Payout Type',

@@ -4,9 +4,14 @@ import { downloadBlob, extractApiErrorMessage } from './commercialApi';
 
 export { downloadBlob, extractApiErrorMessage };
 
-export async function fetchStoreMappings(agreementVersionId) {
-  const { data } = await axiosInstance.get(ENDPOINTS.STORE_MAPPINGS(agreementVersionId));
-  return data;
+export async function fetchStoreMappings(agreementVersionId, params) {
+  const defaultParams = { page: 0, size: 100000 };
+  const useRawPage = !!params;
+  const { data } = await axiosInstance.get(
+    ENDPOINTS.STORE_MAPPINGS(agreementVersionId),
+    { params: params || defaultParams }
+  );
+  return useRawPage ? data : (data.content || []);
 }
 
 export async function downloadStoreMappingTemplate(agreementVersionId) {

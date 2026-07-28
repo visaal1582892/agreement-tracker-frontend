@@ -6,6 +6,11 @@ function round(value) {
   return Math.round(value * factor) / factor;
 }
 
+const roundToTwo = (num) => {
+  if (num == null) return null;
+  return Number(Math.round(num + "e+2") + "e-2");
+};
+
 function parseNumber(value) {
   if (value === '' || value == null) return null;
   const numeric = Number(value);
@@ -67,7 +72,7 @@ export function calculateCreditNote({
  * Disc_Val: baseMargin - (medplusContribution / MRP)
  * medplusContribution = Column K (Medplus price-off; Base Offer excluded).
  */
-export function calculateFinalMarginFraction({
+export function calculateFinalMarginPercent({
   discountType,
   discountTypeLabel,
   cp,
@@ -81,14 +86,14 @@ export function calculateFinalMarginFraction({
   }
 
   const discount = parseNumber(medplusContribution) ?? 0;
-  const baseMargin = (mrpValue - cpValue) / mrpValue;
+  const baseMargin = ((mrpValue - cpValue) / mrpValue) * 100;
   const type = resolveDiscountTypeKey(discountType, discountTypeLabel);
 
   if (type.includes('PERCENT') || type.includes('%') || discountType === 'DISC_PERCENT') {
-    return round(baseMargin - discount / 100);
+    return round(baseMargin - discount);
   }
   if (type.includes('VAL') || discountType === 'DISC_VAL') {
-    return round(baseMargin - discount / mrpValue);
+    return round(baseMargin - (discount / mrpValue) * 100);
   }
   return round(baseMargin);
 }
@@ -144,17 +149,17 @@ export function calculateDerivedFields({
     };
   }
 
-  const marginPercent = round((mrpValue - cpValue) / mrpValue);
+  const marginPercent = round(((mrpValue - cpValue) / mrpValue) * 100);
   const finalOffer = round(baseOfferValue + medplusValue);
 
   let percentOff;
   if (discountType === 'DISC_PERCENT') {
-    percentOff = round(finalOffer / 100);
+    percentOff = round(finalOffer);
   } else {
-    percentOff = round(finalOffer / mrpValue);
+    percentOff = round((finalOffer / mrpValue) * 100);
   }
 
-  const finalMarginPercent = calculateFinalMarginFraction({
+  const finalMarginPercent = calculateFinalMarginPercent({
     discountType,
     discountTypeLabel,
     cp: cpValue,
@@ -164,12 +169,12 @@ export function calculateDerivedFields({
 
   return {
     totalQty,
-    creditNote,
+    creditNote: roundToTwo(creditNote),
     durationMonths: calculateDurationMonths(startDate, endDate),
-    marginPercent,
-    finalOffer,
-    percentOff,
-    finalMarginPercent,
+    marginPercent: roundToTwo(marginPercent),
+    finalOffer: roundToTwo(finalOffer),
+    percentOff: roundToTwo(percentOff),
+    finalMarginPercent: roundToTwo(finalMarginPercent),
     isNegativeMargin: finalMarginPercent != null && finalMarginPercent < 0,
   };
 }

@@ -38,6 +38,7 @@ import {
   formatMoney,
   formatOfferValue,
   formatPercent,
+  formatPercentOff,
   rejectPriceOff,
 } from '../../api/priceOffsApi';
 
@@ -351,7 +352,7 @@ export default function PriceOffsApprovalHub() {
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.medplusContribution)}>{formatOfferValue(row.medplusContribution, row.discountType)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.marginPercent)}>{formatPercent(row.marginPercent)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.finalOffer)}>{formatOfferValue(row.finalOffer, row.discountType)}</TableCell>
-                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.percentOff)}>{formatPercent(row.percentOff)}</TableCell>
+                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.percentOff)}>{formatPercentOff(row.percentOff)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.finalMarginPercent)}>{formatPercent(row.finalMarginPercent)}</TableCell>
                 <TableCell align="right" sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.actions)} onClick={(e) => e.stopPropagation()}>
                   <Tooltip title="Approve">

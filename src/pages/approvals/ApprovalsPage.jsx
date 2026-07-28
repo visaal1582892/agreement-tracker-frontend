@@ -4,8 +4,9 @@ import {
   Box, Grid, Paper, Typography, Divider, List, ListItemButton, ListItemText,
   TextField, InputAdornment, TablePagination, CircularProgress, alpha, Tabs, Tab,
   Button, Alert, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
+  Drawer, IconButton,
 } from '@mui/material';
-import { Search, TaskAlt, InboxOutlined, SwapHoriz, PowerSettingsNew, DeleteOutlined } from '@mui/icons-material';
+import { Search, TaskAlt, InboxOutlined, SwapHoriz, PowerSettingsNew, DeleteOutlined, Close } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import {
   fetchPendingApprovals,
@@ -426,30 +427,32 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     if (activeTab !== 'approvals') return;
-    if (pendingApprovals.length === 0) {
-      setSelectedAgreementId(null);
-      return;
-    }
-    const stillVisible = pendingApprovals.some((a) => a.agreementId === selectedAgreementId);
-    if (!selectedAgreementId || !stillVisible) {
-      setSelectedAgreementId(pendingApprovals[0].agreementId ?? null);
+    if (selectedAgreementId) {
+      const stillVisible = pendingApprovals.some((a) => a.agreementId === selectedAgreementId);
+      if (!stillVisible) {
+        setSelectedAgreementId(null);
+      }
     }
   }, [pendingApprovals, selectedAgreementId, activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'operational') return;
-    if (pendingActionRequests.length === 0) {
-      setSelectedRequestId(null);
-      return;
-    }
-    const stillVisible = pendingActionRequests.some((r) => r.id === selectedRequestId);
-    if (!selectedRequestId || !stillVisible) {
-      setSelectedRequestId(pendingActionRequests[0]?.id ?? null);
+    if (selectedRequestId) {
+      const stillVisible = pendingActionRequests.some((r) => r.id === selectedRequestId);
+      if (!stillVisible) {
+        setSelectedRequestId(null);
+      }
     }
   }, [pendingActionRequests, selectedRequestId, activeTab]);
 
   const selectedRequest = pendingActionRequests.find((r) => r.id === selectedRequestId) ?? null;
   const hasSearch = Boolean(searchQuery);
+
+  const isDrawerOpen = Boolean(selectedAgreementId || selectedRequestId);
+  const closeDrawer = () => {
+    setSelectedAgreementId(null);
+    setSelectedRequestId(null);
+  };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -467,136 +470,141 @@ export default function ApprovalsPage() {
         <Tab label={`Operational Requests (${pendingActionRequestsTotal ?? 0})`} value="operational" />
       </Tabs>
 
-      <Grid container spacing={2} sx={{ flex: 1, minHeight: 480 }}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          {activeTab === 'approvals' ? (
-            <PendingListPanel
-              title="Pending Approvals"
-              totalCount={pendingTotal ?? 0}
-              searchInput={searchInput}
-              onSearchChange={setSearchInput}
-              loading={loading}
-              items={pendingApprovals}
-              emptyVariant="approvals"
-              hasSearch={hasSearch}
-              selectedKey={selectedAgreementId}
-              onSelect={(a) => setSelectedAgreementId(a.agreementId)}
-              page={page}
-              rowsPerPage={rowsPerPage}
-              onPageChange={(_, newPage) => setPage(newPage)}
-              onRowsPerPageChange={(e) => {
-                setRowsPerPage(parseInt(e.target.value, 10));
-                setPage(0);
-              }}
-              renderItem={{
-                key: (a) => a.agreementId,
-                content: (a) => (
-                  <ListItemText
-                    primary={(
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>{a.agreementName || 'Agreement'}</Typography>
-                        <StatusBadge status="PENDING_APPROVAL" />
-                      </Box>
-                    )}
-                    secondary={a.agreementGroupName}
-                  />
-                ),
-              }}
-            />
-          ) : (
-            <PendingListPanel
-              title="Operational Requests"
-              totalCount={pendingActionRequestsTotal ?? 0}
-              searchInput={searchInput}
-              onSearchChange={setSearchInput}
-              loading={loading}
-              items={pendingActionRequests}
-              emptyVariant="operational"
-              hasSearch={hasSearch}
-              selectedKey={selectedRequestId}
-              onSelect={(r) => setSelectedRequestId(r.id)}
-              page={page}
-              rowsPerPage={rowsPerPage}
-              onPageChange={(_, newPage) => setPage(newPage)}
-              onRowsPerPageChange={(e) => {
-                setRowsPerPage(parseInt(e.target.value, 10));
-                setPage(0);
-              }}
-              renderItem={{
-                key: (r) => r.id,
-                content: (r) => (
-                  <ListItemText
-                    primary={(
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>
-                          {r.actionType === 'DELETE_GROUP'
-                            ? (r.agreementName || 'Group deletion')
-                            : (r.agreementName || 'Agreement')}
-                        </Typography>
-                        <Chip
-                          label={
-                            r.actionType === 'TRANSFER'
-                              ? 'Transfer'
-                              : r.actionType === 'DELETE_GROUP'
-                                ? 'Delete Group'
-                                : 'Terminate'
-                          }
-                          size="small"
-                          color={
-                            r.actionType === 'TRANSFER'
-                              ? 'primary'
-                              : r.actionType === 'DELETE_GROUP'
-                                ? 'warning'
-                                : 'error'
-                          }
-                          variant="outlined"
-                        />
-                      </Box>
-                    )}
-                    secondary={`${r.agreementName || '—'} · ${r.requestedByName}`}
-                  />
-                ),
-              }}
-            />
-          )}
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Paper
-            elevation={0}
-            sx={{
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'divider',
-              height: '100%',
-              overflowY: 'auto',
-              p: (activeTab === 'approvals' ? selectedAgreementId : selectedRequestId) ? 3 : 0,
+      <Box sx={{ flex: 1, minHeight: 480 }}>
+        {activeTab === 'approvals' ? (
+          <PendingListPanel
+            title="Pending Approvals"
+            totalCount={pendingTotal ?? 0}
+            searchInput={searchInput}
+            onSearchChange={setSearchInput}
+            loading={loading}
+            items={pendingApprovals}
+            emptyVariant="approvals"
+            hasSearch={hasSearch}
+            selectedKey={selectedAgreementId}
+            onSelect={(a) => setSelectedAgreementId(a.agreementId)}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
             }}
-          >
-            {activeTab === 'approvals' ? (
-              selectedAgreementId ? (
-                <AgreementDetailPage
-                  key={selectedAgreementId}
-                  embeddedAgreementId={selectedAgreementId}
-                  onActionComplete={loadPending}
+            renderItem={{
+              key: (a) => a.agreementId,
+              content: (a) => (
+                <ListItemText
+                  primary={(
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>{a.agreementName || 'Agreement'}</Typography>
+                      <StatusBadge status="PENDING_APPROVAL" />
+                    </Box>
+                  )}
+                  secondary={a.agreementGroupName}
                 />
-              ) : (
-                <DetailEmptyState variant="approvals" />
-              )
-            ) : (
-              selectedRequest ? (
-                <OperationalRequestDetail
-                  key={selectedRequest.id}
-                  request={selectedRequest}
-                  onResolved={loadPending}
+              ),
+            }}
+          />
+        ) : (
+          <PendingListPanel
+            title="Operational Requests"
+            totalCount={pendingActionRequestsTotal ?? 0}
+            searchInput={searchInput}
+            onSearchChange={setSearchInput}
+            loading={loading}
+            items={pendingActionRequests}
+            emptyVariant="operational"
+            hasSearch={hasSearch}
+            selectedKey={selectedRequestId}
+            onSelect={(r) => setSelectedRequestId(r.id)}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+            }}
+            renderItem={{
+              key: (r) => r.id,
+              content: (r) => (
+                <ListItemText
+                  primary={(
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>
+                        {r.actionType === 'DELETE_GROUP'
+                          ? (r.agreementName || 'Group deletion')
+                          : (r.agreementName || 'Agreement')}
+                      </Typography>
+                      <Chip
+                        label={
+                          r.actionType === 'TRANSFER'
+                            ? 'Transfer'
+                            : r.actionType === 'DELETE_GROUP'
+                              ? 'Delete Group'
+                              : 'Terminate'
+                        }
+                        size="small"
+                        color={
+                          r.actionType === 'TRANSFER'
+                            ? 'primary'
+                            : r.actionType === 'DELETE_GROUP'
+                              ? 'warning'
+                              : 'error'
+                        }
+                        variant="outlined"
+                      />
+                    </Box>
+                  )}
+                  secondary={`${r.agreementName || '—'} · ${r.requestedByName}`}
                 />
-              ) : (
-                <DetailEmptyState variant="operational" />
-              )
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+              ),
+            }}
+          />
+        )}
+      </Box>
+
+      <Drawer
+        anchor="right"
+        open={isDrawerOpen}
+        onClose={closeDrawer}
+        PaperProps={{
+          sx: { width: { xs: '100%', md: '80%', lg: '70%' }, maxWidth: 1200, bgcolor: 'background.default' }
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'white' }}>
+          <Typography variant="h6" fontWeight={700}>
+            {activeTab === 'approvals' ? 'Review Agreement' : 'Review Request'}
+          </Typography>
+          <IconButton onClick={closeDrawer} edge="end">
+            <Close />
+          </IconButton>
+        </Box>
+        <Box sx={{ p: 3, overflowY: 'auto', flex: 1, bgcolor: 'background.default' }}>
+          {activeTab === 'approvals' ? (
+            selectedAgreementId && (
+              <AgreementDetailPage
+                key={selectedAgreementId}
+                embeddedAgreementId={selectedAgreementId}
+                onActionComplete={() => {
+                  loadPending();
+                  closeDrawer();
+                }}
+              />
+            )
+          ) : (
+            selectedRequest && (
+              <OperationalRequestDetail
+                key={selectedRequest.id}
+                request={selectedRequest}
+                onResolved={() => {
+                  loadPending();
+                  closeDrawer();
+                }}
+              />
+            )
+          )}
+        </Box>
+      </Drawer>
     </Box>
   );
 }

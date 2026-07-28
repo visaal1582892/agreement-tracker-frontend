@@ -24,3 +24,8 @@ export function incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncom
   if (baselineIncomeTypeId == null || currentIncomeTypeId == null) return false;
   return String(baselineIncomeTypeId) !== String(currentIncomeTypeId);
 }
+
+export function agreementTypeChangedFromBaseline(baselineAgreementTypeId, currentAgreementTypeId) {
+  if (baselineAgreementTypeId == null || currentAgreementTypeId == null) return false;
+  return String(baselineAgreementTypeId) !== String(currentAgreementTypeId);
+}

@@ -37,6 +37,7 @@ export default function SearchableSelect({
   maxVisibleChips = DEFAULT_MAX_VISIBLE_CHIPS,
   noOptionsText = 'No results found',
   emptyQueryText = 'Type to search…',
+  onPaste,
 }) {
   const multi = multiple ?? isMulti;
   const listboxId = useId();
@@ -97,7 +98,12 @@ export default function SearchableSelect({
   useEffect(() => {
     if (!isOpen) return undefined;
 
-    const handleScrollOrResize = () => closeDropdown();
+    const handleScrollOrResize = (e) => {
+      if (e && e.type === 'scroll' && dropdownRef.current?.contains(e.target)) {
+        return;
+      }
+      closeDropdown();
+    };
     window.addEventListener('resize', handleScrollOrResize);
     window.addEventListener('scroll', handleScrollOrResize, true);
     return () => {
@@ -281,6 +287,7 @@ export default function SearchableSelect({
           onChange={handleInputChange}
           onFocus={handleInputFocus}
           onKeyDown={handleKeyDown}
+          onPaste={onPaste}
           placeholder={selectedItems.length && multi ? '' : placeholder}
           disabled={disabled}
           role="combobox"

@@ -66,7 +66,7 @@ import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5Review from './wizard/Step5Review';
 import WizardErrorBoundary from '../../components/wizard/WizardErrorBoundary';
 import { resolveStructureType, STRUCTURE_TYPE } from '../../constants/commercialStructure';
-import { incomeTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
+import { incomeTypeChangedFromBaseline, agreementTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
 
 function getAgreementPersistenceKey(agreement, fallbackId = null) {
   return agreement?.agreementId ?? agreement?.id ?? fallbackId;
@@ -167,8 +167,7 @@ export default function AgreementEditPage() {
     const currentIncome = state.agreement?.details?.incomeTypeId;
     const currentAgreementType = state.agreement?.details?.agreementTypeId;
     const incomeChanged = incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncome);
-    const agreementTypeChanged = baselineAgreementTypeId != null
-      && String(baselineAgreementTypeId) !== String(currentAgreementType);
+    const agreementTypeChanged = agreementTypeChangedFromBaseline(baselineAgreementTypeId, currentAgreementType);
     if (!incomeChanged && !agreementTypeChanged) return null;
 
     const nextState = resetAfterIncomeTypeChange(state);

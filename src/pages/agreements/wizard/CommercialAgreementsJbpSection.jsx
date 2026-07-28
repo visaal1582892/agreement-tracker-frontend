@@ -45,12 +45,10 @@ import {
   downloadJbpTemplate,
   extractApiErrorMessage,
   fetchJbpStructure,
-  fetchJbpTimePeriods,
   isJbpValidationErrorBlob,
   uploadJbpWorkbook,
 } from '../../../api/jbpApi';
 import {
-  fetchJbpPreviewTimePeriods,
   generateJbpPreviewTemplate,
   parseJbpWorkbook,
 } from '../../../api/revisionCommercialApi';
@@ -60,7 +58,6 @@ import {
   createJbpConfig,
   mapConfigurationsFromApi,
   resolveFinancialYearStartMonth,
-  resolveMasterFrequency,
 } from '../../../utils/jbpMatrixUtils';
 import { formatTimePeriodDisplay } from '../../../utils/timePeriodDisplayUtils';
 import JbpMatrixReviewTable from './JbpMatrixReviewTable';
@@ -89,10 +86,7 @@ export default function CommercialAgreementsJbpSection({
   const isFlat = structureType === STRUCTURE_TYPE.FLAT;
   const isSlabs = structureType === STRUCTURE_TYPE.SLABS;
   const financialYearStartMonth = resolveFinancialYearStartMonth(commercials);
-  const [selectedFrequencies, setSelectedFrequencies] = useState([]);
   const [configurations, setConfigurations] = useState(() => [createJbpConfig(1)]);
-  const [parentPeriodOptions, setParentPeriodOptions] = useState([]);
-  const [loadingPeriods, setLoadingPeriods] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -107,29 +101,18 @@ export default function CommercialAgreementsJbpSection({
 
   const structureVersionId = memoryMode ? sourceVersionId : agreementVersionId;
 
-  const masterFrequency = useMemo(
-    () => resolveMasterFrequency(selectedFrequencies),
-    [selectedFrequencies],
-  );
 
   const hasJbpMatrixState = useMemo(() => (
     Boolean(stagedWorkbook?.sheets?.length)
     || initialJbpCommitted
     || commercials.jbpCommitted
-    || configurations.some((config) => config.parentPeriodIds.length > 0)
+    || configurations.some((config) => config.paymentIntervals.length > 0)
   ), [stagedWorkbook, initialJbpCommitted, commercials.jbpCommitted, configurations]);
 
-  const isParentPeriodClaimedElsewhere = useCallback((configId, periodId) => (
-    configurations.some(
-      (other) => other.id !== configId && other.parentPeriodIds.includes(periodId),
-    )
-  ), [configurations]);
 
   const clearJbpConfigurationState = useCallback(() => {
-    setSelectedFrequencies([]);
     setConfigurations([createJbpConfig(1)]);
     setStagedWorkbook(null);
-    setParentPeriodOptions([]);
   }, []);
 
   const resetJbpLocalState = useCallback(() => {
@@ -167,73 +150,16 @@ export default function CommercialAgreementsJbpSection({
   }, [isFlat, commercials.flatBaselineFrequency, onUpdateCommercials]);
 
   const buildBlueprintPayload = useCallback(() => ({
-    selectedFrequencies,
     financialYearStartMonth,
     configurations: configurations.map((config) => ({
       configId: String(config.id),
-      parentPeriodIds: config.parentPeriodIds,
-      slabCount: Number(config.slabCount),
+      paymentIntervals: config.paymentIntervals,
+      targetIntervals: config.targetIntervals,
+      maxSlabs: Number(config.maxSlabs),
     })),
-  }), [selectedFrequencies, financialYearStartMonth, configurations]);
+  }), [financialYearStartMonth, configurations]);
 
-  const loadParentPeriods = useCallback(async () => {
-    if (!masterFrequency) {
-      setParentPeriodOptions([]);
-      return;
-    }
-    if (memoryMode) {
-      if (!sourceVersionId || !contractStartDate || !contractExpiryDate) {
-        setParentPeriodOptions([]);
-        return;
-      }
-      setLoadingPeriods(true);
-      try {
-        const data = await fetchJbpPreviewTimePeriods(sourceVersionId, masterFrequency, {
-          startDate: contractStartDate,
-          expiryDate: contractExpiryDate,
-          financialYearStartMonth,
-        });
-        setParentPeriodOptions(Array.isArray(data) ? data : []);
-      } catch (err) {
-        enqueueSnackbar(await extractApiErrorMessage(err, 'Failed to load time periods'), { variant: 'error' });
-        setParentPeriodOptions([]);
-      } finally {
-        setLoadingPeriods(false);
-      }
-      return;
-    }
-    if (!agreementVersionId) {
-      setParentPeriodOptions([]);
-      return;
-    }
-    setLoadingPeriods(true);
-    try {
-      const data = await fetchJbpTimePeriods(
-        agreementVersionId,
-        masterFrequency,
-        financialYearStartMonth,
-      );
-      setParentPeriodOptions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      enqueueSnackbar(await extractApiErrorMessage(err, 'Failed to load time periods'), { variant: 'error' });
-      setParentPeriodOptions([]);
-    } finally {
-      setLoadingPeriods(false);
-    }
-  }, [
-    agreementVersionId,
-    masterFrequency,
-    financialYearStartMonth,
-    enqueueSnackbar,
-    memoryMode,
-    sourceVersionId,
-    contractStartDate,
-    contractExpiryDate,
-  ]);
 
-  useEffect(() => {
-    loadParentPeriods();
-  }, [loadParentPeriods, financialYearStartMonth]);
 
   useEffect(() => {
     if (!isSlabs || !structureVersionId) return undefined;
@@ -246,6 +172,12 @@ export default function CommercialAgreementsJbpSection({
       hydrationAttemptedRef.current = true;
       return undefined;
     }
+    // If JBP was already committed (from a previous advance), skip hydration
+    // and let the initialJbpCommitted effect + stagedWorkbook hydration handle it.
+    if (initialJbpCommitted || commercials.jbpCommitted) {
+      hydrationAttemptedRef.current = true;
+      return undefined;
+    }
 
     let cancelled = false;
     const hydrate = async () => {
@@ -255,23 +187,24 @@ export default function CommercialAgreementsJbpSection({
         const data = await fetchJbpStructure(structureVersionId);
         if (cancelled || !data) return;
 
-        if (data.frequencies?.length) {
-          setSelectedFrequencies(data.frequencies);
-        }
         const mappedConfigs = mapConfigurationsFromApi(data.configurations);
         if (mappedConfigs?.length) {
           setConfigurations(mappedConfigs);
         }
-        if (!memoryMode && data.stagedWorkbook?.sheets?.length) {
-          setStagedWorkbook(data.stagedWorkbook);
-          onJbpCommitted?.(true);
+        // Backend returns stagedWorkbooks as a Map<String, JbpStagedWorkbookDto>.
+        // Merge all per-config workbooks into a single stagedWorkbook state object.
+        if (!memoryMode && data.stagedWorkbooks && Object.keys(data.stagedWorkbooks).length > 0) {
+          const allSheets = Object.values(data.stagedWorkbooks)
+            .flatMap((wb) => wb?.sheets ?? [])
+            .filter(Boolean);
+          if (allSheets.length > 0) {
+            setStagedWorkbook({ sheets: allSheets });
+            onJbpCommitted?.(true);
+          }
         }
       } catch (err) {
         if (!cancelled && err?.response?.status !== 404) {
-          enqueueSnackbar(
-            await extractApiErrorMessage(err, 'Failed to load saved JBP structure'),
-            { variant: 'error' },
-          );
+          // Silently ignore 404 (no JBP structure saved yet)
         }
       } finally {
         if (!cancelled) setHydratingStructure(false);
@@ -280,7 +213,44 @@ export default function CommercialAgreementsJbpSection({
 
     hydrate();
     return () => { cancelled = true; };
-  }, [structureVersionId, isSlabs, enqueueSnackbar, onJbpCommitted, memoryMode, initialMemoryJbp]);
+  }, [structureVersionId, isSlabs, enqueueSnackbar, onJbpCommitted, memoryMode, initialMemoryJbp, initialJbpCommitted, commercials.jbpCommitted]);
+
+  // When JBP was already committed (user advanced then went back),
+  // hydrate the staged workbook so the review table is visible.
+  useEffect(() => {
+    if (!isSlabs || !structureVersionId) return undefined;
+    if (!initialJbpCommitted && !commercials.jbpCommitted) return undefined;
+    // Already have a workbook from local upload — no need to fetch.
+    if (stagedWorkbook?.sheets?.length) return undefined;
+
+    let cancelled = false;
+    const hydrateCommitted = async () => {
+      setHydratingStructure(true);
+      try {
+        const data = await fetchJbpStructure(structureVersionId);
+        if (cancelled || !data) return;
+        if (data.stagedWorkbooks && Object.keys(data.stagedWorkbooks).length > 0) {
+          const allSheets = Object.values(data.stagedWorkbooks)
+            .flatMap((wb) => wb?.sheets ?? [])
+            .filter(Boolean);
+          if (allSheets.length > 0) {
+            setStagedWorkbook({ sheets: allSheets });
+          }
+        }
+        const mappedConfigs = mapConfigurationsFromApi(data.configurations);
+        if (mappedConfigs?.length) {
+          setConfigurations(mappedConfigs);
+        }
+      } catch (err) {
+        // Silent — already committed, just unable to reload preview.
+      } finally {
+        if (!cancelled) setHydratingStructure(false);
+      }
+    };
+
+    hydrateCommitted();
+    return () => { cancelled = true; };
+  }, [isSlabs, structureVersionId, initialJbpCommitted, commercials.jbpCommitted, stagedWorkbook]);
 
   useEffect(() => {
     if (hydratedRef.current || !initialJbpCommitted) return;
@@ -348,11 +318,11 @@ export default function CommercialAgreementsJbpSection({
         enqueueSnackbar('Set contract dates in Step 1 before downloading template', { variant: 'warning' });
         return;
       }
-      if (!selectedFrequencies.length) {
-        enqueueSnackbar('Select at least one target interval', { variant: 'warning' });
+      if (configurations.some((c) => !c.paymentIntervals.length || !c.targetIntervals.length)) {
+        enqueueSnackbar('Select at least one payment interval per configuration', { variant: 'warning' });
         return;
       }
-      if (configurations.some((config) => !config.parentPeriodIds.length || !config.slabCount)) {
+      if (configurations.some((config) => !config.paymentIntervals.length || !config.targetIntervals.length || !config.maxSlabs)) {
         enqueueSnackbar('Complete all configuration blocks before downloading', { variant: 'warning' });
         return;
       }
@@ -375,11 +345,11 @@ export default function CommercialAgreementsJbpSection({
       enqueueSnackbar('Save contract details before downloading template', { variant: 'warning' });
       return;
     }
-    if (!selectedFrequencies.length) {
-      enqueueSnackbar('Select at least one target interval', { variant: 'warning' });
+    if (configurations.some((c) => !c.paymentIntervals.length || !c.targetIntervals.length)) {
+      enqueueSnackbar('Select at least one payment interval per configuration', { variant: 'warning' });
       return;
     }
-    if (configurations.some((config) => !config.parentPeriodIds.length || !config.slabCount)) {
+    if (configurations.some((config) => !config.paymentIntervals.length || !config.targetIntervals.length || !config.maxSlabs)) {
       enqueueSnackbar('Complete all configuration blocks before downloading', { variant: 'warning' });
       return;
     }
@@ -621,207 +591,249 @@ export default function CommercialAgreementsJbpSection({
 
       {isSlabs && (
         <>
-      <WizardSectionTitle
-        title="Joint Business Plan (JBP)"
-        info="Build independent configuration groups, download the custom workbook, upload completed targets, review, then commit."
-        mb={0}
-      />
-
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
-          Stage 1 — Configuration Groups
-        </Typography>
-
-        <FormControl fullWidth size="small" sx={{ mb: 2, maxWidth: 360 }}>
-          <InputLabel>Financial Year Start Month</InputLabel>
-          <Select
-            value={financialYearStartMonth}
-            label="Financial Year Start Month"
-            disabled={purgingStructure}
-            onChange={handleFinancialYearStartMonthChange}
-          >
-            {FINANCIAL_YEAR_START_MONTH_OPTIONS.map((option) => (
-              <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <Autocomplete
-          multiple
-          options={JBP_FREQUENCY_OPTIONS}
-          getOptionLabel={(option) => option.label}
-          value={JBP_FREQUENCY_OPTIONS.filter((option) => selectedFrequencies.includes(option.value))}
-          onChange={(_, value) => {
-            setSelectedFrequencies(value.map((item) => item.value));
-            setStagedWorkbook(null);
-          }}
-          renderInput={(params) => (
-            <TextField
-              {...toMuiTextFieldSlotProps(params)}
-              label="Target Intervals"
-              size="small"
-              placeholder="Select intervals"
-            />
-          )}
-          sx={{ mb: 2 }}
-        />
-
-        {configurations.map((config, index) => (
-          <Paper key={config.id} variant="outlined" sx={{ p: 2, mb: 2, bgcolor: alpha(BRAND.bgGray, 0.35) }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                Configuration {index + 1}
-              </Typography>
-              {configurations.length > 1 && (
-                <IconButton size="small" color="error" onClick={() => handleRemoveConfiguration(config.id)}>
-                  <Delete fontSize="small" />
-                </IconButton>
-              )}
-            </Box>
-
-            <Autocomplete
-              multiple
-              options={parentPeriodOptions}
-              getOptionLabel={(option) => formatTimePeriodDisplay(
-                option.name,
-                financialYearStartMonth,
-                { calendarMonth: option.monthNumber, calendarYear: option.calendarYear },
-              )}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              getOptionDisabled={(option) => isParentPeriodClaimedElsewhere(config.id, option.id)}
-              loading={loadingPeriods}
-              disabled={!masterFrequency}
-              value={parentPeriodOptions.filter((option) => config.parentPeriodIds.includes(option.id))}
-              onChange={(_, value) => handleConfigChange(config.id, { parentPeriodIds: value.map((item) => item.id) })}
-              renderInput={(params) => (
-                <TextField
-                  {...toMuiTextFieldSlotProps(params)}
-                  label={masterFrequency ? `Parent Periods (${masterFrequency.replace('_', ' ')})` : 'Parent Periods'}
-                  size="small"
-                  placeholder="Select parent periods"
-                />
-              )}
-              sx={{ mb: 2 }}
-            />
-
-            <TextField
-              label="Number of Slabs"
-              type="number"
-              size="small"
-              value={config.slabCount}
-              onChange={(e) => handleConfigChange(config.id, { slabCount: e.target.value })}
-              slotProps={{ htmlInput: { min: 1 } }}
-              sx={{ maxWidth: 220 }}
-            />
-          </Paper>
-        ))}
-
-        <Button startIcon={<Add />} variant="outlined" onClick={handleAddConfiguration}>
-          Add Custom Configuration
-        </Button>
-      </Paper>
-
-      <Paper variant="outlined" sx={{ p: 2, bgcolor: alpha(BRAND.bgGray, 0.5) }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-          Stage 2 — Workbook Bridge
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            startIcon={downloading ? <CircularProgress size={16} color="inherit" /> : <Download />}
-            onClick={handleDownloadTemplate}
-            disabled={downloading || purgingStructure}
-          >
-            Download JBP Vector Template (.xlsx)
-          </Button>
-
-          {!stagedWorkbook && (
-            <Box
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                handleUpload(e.dataTransfer.files[0]);
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              sx={{
-                flex: 1,
-                minWidth: 280,
-                border: `2px dashed ${dragOver ? BRAND.red : BRAND.borderLight}`,
-                borderRadius: '10px',
-                bgcolor: dragOver ? alpha(BRAND.red, 0.04) : BRAND.white,
-                p: 2,
-                textAlign: 'center',
-                cursor: 'pointer',
-              }}
-            >
-              <UploadFile sx={{ color: BRAND.textSecondary, mb: 0.5 }} />
-              <Typography variant="body2" color="text.secondary">
-                {uploading ? 'Uploading workbook…' : 'Drop completed workbook here or click to upload'}
-              </Typography>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                accept=".xlsx,.xls"
-                onChange={(e) => {
-                  handleUpload(e.target.files[0]);
-                  e.target.value = '';
-                }}
-              />
-            </Box>
-          )}
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-          Fill at least one slab row. Blank slab rows in the template are ignored on upload.
-        </Typography>
-      </Paper>
-
-      {stagedWorkbook && (
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <JbpMatrixReviewTable
-            stagedWorkbook={stagedWorkbook}
-            title="Stage 3 — Unpivoted Review Grid"
-            financialYearStartMonth={financialYearStartMonth}
+          <WizardSectionTitle
+            title="Joint Business Plan (JBP)"
+            info={
+              (initialJbpCommitted || commercials.jbpCommitted)
+                ? 'JBP structure has been committed. Use "Reset & Reconfigure" to start over.'
+                : 'Build independent configuration groups, download the custom workbook, upload completed targets, review, then commit.'
+            }
+            mb={0}
           />
 
-          <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
-            <Button variant="outlined" onClick={() => setStagedWorkbook(null)}>
-              Discard & Re-upload Sheet
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleConfirmAndAdvance}
-              disabled={committing}
-              startIcon={committing ? <CircularProgress size={16} color="inherit" /> : null}
-            >
-              Confirm JBP Relational Matrix{memoryMode ? ' (Memory)' : ' & Advance'}
-            </Button>
-          </Box>
-        </Paper>
-      )}
+          {/* When already committed: show only review table + reset button */}
+          {(initialJbpCommitted || commercials.jbpCommitted) ? (
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              {stagedWorkbook ? (
+                <>
+                  <JbpMatrixReviewTable
+                    stagedWorkbook={stagedWorkbook}
+                    title="Committed JBP Structure"
+                    financialYearStartMonth={financialYearStartMonth}
+                  />
+                  <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={purgeJbpStructure}
+                      disabled={purgingStructure}
+                    >
+                      Reset & Reconfigure
+                    </Button>
+                  </Box>
+                </>
+              ) : (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1 }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2" color="text.secondary">Loading committed JBP structure…</Typography>
+                </Box>
+              )}
+            </Paper>
+          ) : (
+            /* When NOT committed: show full config + upload + review flow */
+            <>
+              <Paper variant="outlined" sx={{ p: 3 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
+                  Stage 1 — Configuration Groups
+                </Typography>
 
-      <Dialog open={pendingFinancialYearStartMonth != null} onClose={() => setPendingFinancialYearStartMonth(null)}>
-        <DialogTitle>Reset JBP Matrix?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Changing the financial year start month invalidates the current JBP configuration and matrix.
-            Existing JBP data will be purged and you must download a fresh template.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPendingFinancialYearStartMonth(null)}>Cancel</Button>
-          <Button
-            color="warning"
-            variant="contained"
-            onClick={handleConfirmFinancialYearChange}
-            disabled={purgingStructure}
-          >
-            Reset & Apply
-          </Button>
-        </DialogActions>
-      </Dialog>
+                <FormControl fullWidth size="small" sx={{ mb: 2, maxWidth: 360 }}>
+                  <InputLabel>Financial Year Start Month</InputLabel>
+                  <Select
+                    value={financialYearStartMonth}
+                    label="Financial Year Start Month"
+                    disabled={purgingStructure}
+                    onChange={handleFinancialYearStartMonthChange}
+                  >
+                    {FINANCIAL_YEAR_START_MONTH_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {configurations.map((config, index) => (
+                  <Paper key={config.id} variant="outlined" sx={{ p: 2, mb: 2, bgcolor: alpha(BRAND.bgGray, 0.35) }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        Configuration {index + 1}
+                      </Typography>
+                      {configurations.length > 1 && (
+                        <IconButton size="small" color="error" onClick={() => handleRemoveConfiguration(config.id)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={4}>
+                        <Autocomplete
+                          multiple
+                          disableCloseOnSelect
+                          options={JBP_FREQUENCY_OPTIONS}
+                          getOptionDisabled={(option) => {
+                            const selectedInOtherConfigs = configurations.some(
+                              (c) => c.id !== config.id && c.paymentIntervals.includes(option.value)
+                            );
+                            return selectedInOtherConfigs;
+                          }}
+                          getOptionLabel={(option) => option.label}
+                          value={JBP_FREQUENCY_OPTIONS.filter((option) => config.paymentIntervals.includes(option.value))}
+                          onChange={(_, value) => handleConfigChange(config.id, { paymentIntervals: value.map((item) => item.value) })}
+                          renderInput={(params) => (
+                            <TextField
+                              {...toMuiTextFieldSlotProps(params)}
+                              label="Payment Intervals"
+                              required
+                              size="small"
+                              placeholder="Select payment intervals"
+                            />
+                          )}
+                          sx={{ minWidth: 250, mb: 2 }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Autocomplete
+                          multiple
+                          options={JBP_FREQUENCY_OPTIONS}
+                          getOptionLabel={(option) => option.label}
+                          value={JBP_FREQUENCY_OPTIONS.filter((option) => config.targetIntervals.includes(option.value))}
+                          onChange={(_, value) => handleConfigChange(config.id, { targetIntervals: value.map((item) => item.value) })}
+                          renderInput={(params) => (
+                            <TextField
+                              {...toMuiTextFieldSlotProps(params)}
+                              label="Target Intervals"
+                              error={fieldErrors[`jbpConfig_${config.id}_target`]}
+                              placeholder="Select target intervals"
+                              size="small"
+                            />
+                          )}
+                          sx={{ minWidth: 250, mb: 2 }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <TextField
+                          label="Max Number of Slabs"
+                          type="number"
+                          size="small"
+                          required
+                          value={config.maxSlabs}
+                          onChange={(e) => handleConfigChange(config.id, { maxSlabs: e.target.value })}
+                          slotProps={{ htmlInput: { min: 1 } }}
+                          sx={{ maxWidth: 220, mb: 2 }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                ))}
+
+                <Button startIcon={<Add />} variant="outlined" onClick={handleAddConfiguration}>
+                  Add Custom Configuration
+                </Button>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: alpha(BRAND.bgGray, 0.5) }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                  Stage 2 — Workbook Bridge
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={downloading ? <CircularProgress size={16} color="inherit" /> : <Download />}
+                    onClick={handleDownloadTemplate}
+                    disabled={downloading || purgingStructure}
+                  >
+                    Download JBP Vector Template (.xlsx)
+                  </Button>
+
+                  {!stagedWorkbook && (
+                    <Box
+                      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOver(false);
+                        handleUpload(e.dataTransfer.files[0]);
+                      }}
+                      onClick={() => fileInputRef.current?.click()}
+                      sx={{
+                        flex: 1,
+                        minWidth: 280,
+                        border: `2px dashed ${dragOver ? BRAND.red : BRAND.borderLight}`,
+                        borderRadius: '10px',
+                        bgcolor: dragOver ? alpha(BRAND.red, 0.04) : BRAND.white,
+                        p: 2,
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <UploadFile sx={{ color: BRAND.textSecondary, mb: 0.5 }} />
+                      <Typography variant="body2" color="text.secondary">
+                        {uploading ? 'Uploading workbook…' : 'Drop completed workbook here or click to upload'}
+                      </Typography>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        hidden
+                        accept=".xlsx,.xls"
+                        onChange={(e) => {
+                          handleUpload(e.target.files[0]);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                  Fill at least one slab row. Blank slab rows in the template are ignored on upload.
+                </Typography>
+              </Paper>
+
+              {stagedWorkbook && (
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <JbpMatrixReviewTable
+                    stagedWorkbook={stagedWorkbook}
+                    configurations={configurations}
+                    title="Stage 3 — Unpivoted Review Grid"
+                    financialYearStartMonth={financialYearStartMonth}
+                  />
+
+                  <Box sx={{ display: 'flex', gap: 1.5, mt: 2, flexWrap: 'wrap' }}>
+                    <Button variant="outlined" onClick={() => setStagedWorkbook(null)}>
+                      Discard & Re-upload Sheet
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={handleConfirmAndAdvance}
+                      disabled={committing}
+                      startIcon={committing ? <CircularProgress size={16} color="inherit" /> : null}
+                    >
+                      Confirm JBP Relational Matrix{memoryMode ? ' (Memory)' : ' & Advance'}
+                    </Button>
+                  </Box>
+                </Paper>
+              )}
+            </>
+          )}
+
+          <Dialog open={pendingFinancialYearStartMonth != null} onClose={() => setPendingFinancialYearStartMonth(null)}>
+            <DialogTitle>Reset JBP Matrix?</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                Changing the financial year start month invalidates the current JBP configuration and matrix.
+                Existing JBP data will be purged and you must download a fresh template.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setPendingFinancialYearStartMonth(null)}>Cancel</Button>
+              <Button
+                color="warning"
+                variant="contained"
+                onClick={handleConfirmFinancialYearChange}
+                disabled={purgingStructure}
+              >
+                Reset & Apply
+              </Button>
+            </DialogActions>
+          </Dialog>
         </>
       )}
     </Box>

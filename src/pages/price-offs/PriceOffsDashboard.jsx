@@ -39,16 +39,16 @@ import {
   downloadBlob,
   downloadPriceOffTemplate,
   extractPriceOffError,
+  isPriceOffValidationErrorBlob,
   fetchPriceOffCampaign,
   fetchPriceOffCampaigns,
   fetchPriceOffFilterOptions,
   fetchPriceOffLocations,
-  formatCreditNote,
   formatFinalOffer,
   formatMoney,
   formatOfferValue,
   formatPercent,
-  resolveLocationAllocation,
+  formatPercentOff,
   updatePriceOffCampaignId,
   updatePriceOffCampaign,
   previewPriceOffCampaigns,
@@ -91,7 +91,6 @@ export default function PriceOffsDashboard() {
   const [debouncedFilters, setDebouncedFilters] = useState(EMPTY_FILTERS);
   const [channelOptions, setChannelOptions] = useState([]);
   const [discountTypeOptions, setDiscountTypeOptions] = useState([]);
-  const [locationCodes, setLocationCodes] = useState([]);
   const [allLocations, setAllLocations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -138,7 +137,6 @@ export default function PriceOffsDashboard() {
     fetchPriceOffLocations()
       .then((locations) => {
         setAllLocations(locations ?? []);
-        setLocationCodes((locations ?? []).map((location) => location.code));
       })
       .catch(() => enqueueSnackbar('Failed to load price off location columns', { variant: 'error' }));
   }, [enqueueSnackbar]);
@@ -265,14 +263,15 @@ export default function PriceOffsDashboard() {
       setPreviewData(preview);
       setPreviewOpen(true);
       if (!preview.canCommit) {
-        setUploadErrors(
-          (preview.rows ?? [])
-            .filter((row) => !row.valid)
-            .flatMap((row) => (row.errors ?? []).map((err) => `Row ${row.rowNumber}: ${err}`)),
-        );
+        setUploadErrors(['The uploaded file has structural errors.']);
       }
     } catch (err) {
-      enqueueSnackbar(await extractPriceOffError(err, 'Preview failed'), { variant: 'error' });
+      if (isPriceOffValidationErrorBlob(err)) {
+        enqueueSnackbar('Validation errors found in the file. Downloading error file...', { variant: 'error' });
+        downloadBlob(err?.response?.data, 'price-offs-validation-errors.xlsx');
+      } else {
+        enqueueSnackbar(await extractPriceOffError(err, 'Preview failed'), { variant: 'error' });
+      }
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -486,12 +485,6 @@ export default function PriceOffsDashboard() {
           <Typography variant="subtitle1" fontWeight="bold">
             Commit Successful: {uploadSummary.successfullyParsedRows} Drafts Created
           </Typography>
-          <Typography variant="body2">
-            Total Campaign Allocation: {Number(uploadSummary.totalCampaignQuantity).toLocaleString('en-IN')} units
-          </Typography>
-          <Typography variant="body2">
-            Total Expected Credit Note: ₹ {Number(uploadSummary.totalExpectedCreditNote).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Typography>
         </Alert>
       )}
 
@@ -629,17 +622,6 @@ export default function PriceOffsDashboard() {
               <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.maxUnitCap)}>
                 <HeaderLabel>Max Cap</HeaderLabel>
               </TableCell>
-              {locationCodes.map((code) => (
-                <TableCell key={`header-loc-${code}`} sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.locationZone)}>
-                  <HeaderLabel>{code}</HeaderLabel>
-                </TableCell>
-              ))}
-              <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.totalQty)}>
-                <HeaderLabel>Total Qty</HeaderLabel>
-              </TableCell>
-              <TableCell sx={headerCellSx(PRICE_OFF_COLUMN_WIDTHS.creditNote)}>
-                <HeaderLabel>Credit Note</HeaderLabel>
-              </TableCell>
               <TableCell sx={filterHeaderCellSx(PRICE_OFF_COLUMN_WIDTHS.campaignId)}>
                 <HeaderFilterStack label="Campaign ID">
                   <HeaderTextFilter
@@ -720,23 +702,9 @@ export default function PriceOffsDashboard() {
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.fromQty)}>{row.fromQty ?? '—'}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.marginPercent)}>{formatPercent(row.marginPercent)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.finalOffer)}>{formatFinalOffer(row.finalOffer, row.discountType)}</TableCell>
-                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.percentOff)}>{formatPercent(row.percentOff)}</TableCell>
+                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.percentOff)}>{formatPercentOff(row.percentOff)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.finalMarginPercent)}>{formatPercent(row.finalMarginPercent)}</TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.maxUnitCap)}>{row.maxUnitCap ?? '—'}</TableCell>
-                {locationCodes.map((code) => {
-                  const qty = resolveLocationAllocation(row, code);
-                  return (
-                    <TableCell key={`${row.id}-loc-${code}`} sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.locationZone)}>
-                      {qty > 0 ? qty : '—'}
-                    </TableCell>
-                  );
-                })}
-                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.totalQty, { fontWeight: 600 })}>
-                  {row.totalQty ?? '—'}
-                </TableCell>
-                <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.creditNote, { fontWeight: 600 })}>
-                  {formatCreditNote(row.creditNote)}
-                </TableCell>
                 <TableCell sx={dataCellSx(PRICE_OFF_COLUMN_WIDTHS.campaignId)}>
                   <PriceOffTextCell value={row.campaignId} />
                 </TableCell>

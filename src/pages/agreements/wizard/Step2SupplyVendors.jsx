@@ -3,7 +3,6 @@ import { Box, Grid, Typography } from '@mui/material';
 import { integrationApi } from '../../../api/integrationApi';
 import { useDebounce } from '../../../hooks/useDebounce';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
-import BulkVendorInput from '../../../components/forms/BulkVendorInput';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 
 const VENDOR_DROPDOWN_LIMIT = 50;
@@ -47,29 +46,50 @@ export default function Step2SupplyVendors({
       return undefined;
     }
 
-    const isNumeric = /^\d+$/.test(trimmedSearch);
-    if (!isNumeric && trimmedSearch.length < 3) {
+    const tokens = trimmedSearch.split(/[\s,]+/).filter(Boolean);
+    const allNumeric = tokens.length > 0 && tokens.every(t => /^\d+$/.test(t));
+
+    if (!allNumeric && trimmedSearch.length < 3) {
       return undefined;
     }
 
     let cancelled = false;
     setIsVendorLoading(true);
 
-    integrationApi.searchVendors(trimmedSearch)
-      .then((response) => {
-        if (cancelled) return;
-        const items = Array.isArray(response.data) ? response.data : [];
-        setFetchedVendors(items.map(normalizeVendor).slice(0, VENDOR_DROPDOWN_LIMIT));
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('Failed to fetch vendors', err);
-          setFetchedVendors([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsVendorLoading(false);
-      });
+    if (allNumeric && tokens.length > 1) {
+      const ids = tokens.map(Number);
+      integrationApi.getVendorsByIds(ids)
+        .then((response) => {
+          if (cancelled) return;
+          const items = Array.isArray(response.data) ? response.data : [];
+          setFetchedVendors(items.map(normalizeVendor).slice(0, VENDOR_DROPDOWN_LIMIT));
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            console.error('Failed to fetch pasted vendor IDs', err);
+            setFetchedVendors([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setIsVendorLoading(false);
+        });
+    } else {
+      integrationApi.searchVendors(trimmedSearch)
+        .then((response) => {
+          if (cancelled) return;
+          const items = Array.isArray(response.data) ? response.data : [];
+          setFetchedVendors(items.map(normalizeVendor).slice(0, VENDOR_DROPDOWN_LIMIT));
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            console.error('Failed to fetch vendors', err);
+            setFetchedVendors([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setIsVendorLoading(false);
+        });
+    }
 
     return () => { cancelled = true; };
   }, [debouncedVendorSearch]);
@@ -115,13 +135,15 @@ export default function Step2SupplyVendors({
     setVendorSearchText(query ?? '');
   };
 
+
+
   return (
     <Box sx={{ mb: 0 }}>
       <Grid container spacing={3}>
         <Grid size={12}>
           <WizardFieldAnchor field="supplyVendors" error={error}>
             <SearchableSelect
-              label="Supply Vendors *"
+              label="Supply Vendors"
               placeholder="Search vendors by name or ID…"
               isMulti
               options={fetchedVendors}
@@ -143,12 +165,6 @@ export default function Step2SupplyVendors({
               required
               disabled={disabled}
             />
-            {!disabled && (
-              <BulkVendorInput
-                selectedVendors={resolvedVendors}
-                onChange={handleVendorChange}
-              />
-            )}
           </WizardFieldAnchor>
         </Grid>
       </Grid>

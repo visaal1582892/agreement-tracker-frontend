@@ -336,9 +336,6 @@ export function isRevisionDateChange(isRenewMode, details, sourceAgreement) {
 /** Excel-driven structures only: Asset stores, or Commercial Contracts SLAB/JBP. FLAT skipped. */
 export function requiresExcelCommercialOverride(state, sourceAgreement = null) {
   const ctx = resolveWizardIncomeContext(state, sourceAgreement, []);
-  if (isAssetRentalIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
-    return true;
-  }
   if (isCommercialContractsIncomeType(ctx.incomeTypes, ctx.incomeTypeId, ctx.incomeTypeName)) {
     const structure = state.agreement?.commercials?.commercialStructure
       ?? sourceAgreement?.commercialStructure

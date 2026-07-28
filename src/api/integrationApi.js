@@ -18,10 +18,15 @@ export const integrationApi = {
   searchManufacturers: (searchKey) =>
     axiosInstance.get(ENDPOINTS.INTEGRATION_MANUFACTURERS, { params: { searchKey } }),
 
-  getDivisions: ({ manufacturerIds, searchKey = '', page, size }) =>
+  getManufacturersByIds: (ids) =>
+    axiosInstance.get(ENDPOINTS.INTEGRATION_MANUFACTURERS_BY_IDS, {
+      params: { ids: Array.isArray(ids) ? ids.join(',') : ids },
+    }),
+
+  getDivisions: ({ manufacturerIds, searchKey = '', page, size, pinnedDivisionIds = [] }) =>
     axiosInstance.post(ENDPOINTS.INTEGRATION_DIVISIONS, {
       manufacturerIds,
-      ...(page != null && size != null ? { searchKey, page, size } : {}),
+      ...(page != null && size != null ? { searchKey, page, size, pinnedDivisionIds } : {}),
     }),
 
   searchProducts: ({

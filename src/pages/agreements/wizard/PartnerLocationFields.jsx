@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Chip, Grid, Stack, Typography, alpha, Alert,
   FormControl, FormLabel, RadioGroup, FormControlLabel, Radio,
+  Tooltip, IconButton
 } from '@mui/material';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SearchableSelect from '../../../components/forms/SearchableSelect';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 import { integrationApi } from '../../../api/integrationApi';
@@ -60,16 +62,37 @@ export default function PartnerLocationFields({
   onClearFieldError,
   allowAllLocations = false,
 }) {
-  const [stateOptions, setStateOptions] = useState([]);
-  const [cityParentOptions, setCityParentOptions] = useState([]);
+  const [allStates, setAllStates] = useState([]);
   const [cityOptions, setCityOptions] = useState([]);
   const [stateLoading, setStateLoading] = useState(false);
-  const [cityParentLoading, setCityParentLoading] = useState(false);
   const [cityLoading, setCityLoading] = useState(false);
   const [stateSearchError, setStateSearchError] = useState('');
-  const [cityParentSearchError, setCityParentSearchError] = useState('');
   const [citySearchError, setCitySearchError] = useState('');
   const [cityBrowseState, setCityBrowseState] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setStateLoading(true);
+    integrationApi.searchStates('')
+      .then(({ data }) => {
+        if (!mounted) return;
+        const options = Array.isArray(data) ? data.map((item) => ({
+          ...item,
+          id: item.code,
+          label: `${item.name} (${item.code})`,
+        })) : [];
+        setAllStates(options);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        setStateSearchError(err.response?.data?.message || 'Failed to load states');
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setStateLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const isAllLocations = details.geographyMode === GEOGRAPHY_MODE.ALL;
   const selectionMode = isAllLocations ? GEOGRAPHY_MODE.ALL : 'CUSTOM';
@@ -122,6 +145,26 @@ export default function PartnerLocationFields({
     setCityBrowseState(option || null);
     setCityOptions([]);
     setCitySearchError('');
+    if (option) {
+      setCityLoading(true);
+      integrationApi.searchCities(option.code, '')
+        .then(({ data }) => {
+          const options = Array.isArray(data) ? data.map((item) => ({
+            ...item,
+            stateCode: option.code,
+            stateName: option.name,
+            id: `${option.code}:${item.code}`,
+            label: `${item.name} (${item.code})`,
+          })) : [];
+          setCityOptions(options);
+        })
+        .catch((err) => {
+          setCitySearchError(err.response?.data?.message || 'Failed to load cities');
+        })
+        .finally(() => {
+          setCityLoading(false);
+        });
+    }
   }, []);
 
   const handleCitiesChange = useCallback((options) => {
@@ -153,87 +196,6 @@ export default function PartnerLocationFields({
       selectedCities.filter((item) => !(item.code === city.code && item.stateCode === city.stateCode)),
     );
   }, [selectedStates, selectedCities, persist]);
-
-  const handleStateSearch = useCallback(async (query) => {
-    const q = (query ?? '').trim();
-    if (q.length < SEARCH_MIN_CHARS) {
-      setStateOptions([]);
-      setStateSearchError('');
-      setStateLoading(false);
-      return;
-    }
-    setStateLoading(true);
-    setStateSearchError('');
-    try {
-      const { data } = await integrationApi.searchStates(q);
-      setStateOptions(Array.isArray(data) ? data.map((item) => ({
-        ...item,
-        id: item.code,
-        label: `${item.name} (${item.code})`,
-      })) : []);
-    } catch (err) {
-      setStateOptions([]);
-      setStateSearchError(err.response?.data?.message || 'Failed to load states');
-    } finally {
-      setStateLoading(false);
-    }
-  }, []);
-
-  const handleCityParentSearch = useCallback(async (query) => {
-    const q = (query ?? '').trim();
-    if (q.length < SEARCH_MIN_CHARS) {
-      setCityParentOptions([]);
-      setCityParentSearchError('');
-      setCityParentLoading(false);
-      return;
-    }
-    setCityParentLoading(true);
-    setCityParentSearchError('');
-    try {
-      const { data } = await integrationApi.searchStates(q);
-      setCityParentOptions(Array.isArray(data) ? data.map((item) => ({
-        ...item,
-        id: item.code,
-        label: `${item.name} (${item.code})`,
-      })) : []);
-    } catch (err) {
-      setCityParentOptions([]);
-      setCityParentSearchError(err.response?.data?.message || 'Failed to load states');
-    } finally {
-      setCityParentLoading(false);
-    }
-  }, []);
-
-  const handleCitySearch = useCallback(async (query) => {
-    if (!cityBrowseState?.code) {
-      setCityOptions([]);
-      return;
-    }
-    const q = (query ?? '').trim();
-    if (q.length < SEARCH_MIN_CHARS) {
-      setCityOptions([]);
-      setCitySearchError('');
-      setCityLoading(false);
-      return;
-    }
-    setCityLoading(true);
-    setCitySearchError('');
-    try {
-      const { data } = await integrationApi.searchCities(cityBrowseState.code, q);
-      setCityOptions(Array.isArray(data) ? data.map((item) => ({
-        ...item,
-        stateCode: cityBrowseState.code,
-        stateName: cityBrowseState.name,
-        id: `${cityBrowseState.code}:${item.code}`,
-        label: `${item.name} (${item.code})`,
-      })) : []);
-    } catch (err) {
-      setCityOptions([]);
-      setCitySearchError(err.response?.data?.message || 'Failed to load cities');
-    } finally {
-      setCityLoading(false);
-    }
-  }, [cityBrowseState]);
 
   const hasSelection = selectedStates.length > 0 || selectedCities.length > 0;
 
@@ -267,9 +229,16 @@ export default function PartnerLocationFields({
         </Alert>
       ) : (
         <>
-          <Typography variant="body2" sx={{ mb: 1.5, color: BRAND.textSecondary }}>
-            Select whole states and/or cities from other states. Selecting cities for a state removes that whole-state selection.
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+            <Typography variant="subtitle2" fontWeight={600} color={BRAND.textPrimary}>
+              Location Selection
+            </Typography>
+            <Tooltip title="Select whole states, or pick a state to browse and select specific cities. Selecting specific cities will clear that whole-state selection." arrow placement="right">
+              <IconButton size="small" sx={{ ml: 0.5, color: BRAND.textSecondary }}>
+                <InfoOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
 
           {hasSelection && (
             <Box
@@ -313,35 +282,30 @@ export default function PartnerLocationFields({
                 <SearchableSelect
                   isMulti
                   label="Whole States"
-                  placeholder="Search states to select entirely (min 2 chars)"
-                  options={stateOptions}
+                  placeholder="Search and select states"
+                  options={allStates}
                   value={selectedStates}
                   onChange={handleStatesChange}
-                  onSearch={handleStateSearch}
                   getOptionLabel={locationLabel}
                   isOptionEqualToValue={(a, b) => a?.code === b?.code}
                   loading={stateLoading}
                   error={fieldErrors.partnerState || stateSearchError}
-                  helperText={stateSearchError || 'Selecting a state clears any cities already chosen for that state'}
-                  noOptionsText={stateLoading ? 'Searching…' : 'No states found'}
+                  noOptionsText={stateLoading ? 'Loading states…' : 'No states found'}
                 />
               </WizardFieldAnchor>
             </Grid>
 
             <Grid size={{ xs: 12, md: 5 }}>
               <SearchableSelect
-                label="City search — State"
-                placeholder="Pick state to browse cities"
-                options={cityParentOptions}
+                label="State for Cities"
+                placeholder="Pick a state"
+                options={allStates}
                 value={cityBrowseState}
                 onChange={handleCityBrowseStateChange}
-                onSearch={handleCityParentSearch}
                 getOptionLabel={locationLabel}
                 isOptionEqualToValue={(a, b) => a?.code === b?.code}
-                loading={cityParentLoading}
-                error={cityParentSearchError}
-                helperText={cityParentSearchError || 'Temporary browse context — not a whole-state selection'}
-                noOptionsText={cityParentLoading ? 'Searching…' : 'No states found'}
+                loading={stateLoading}
+                noOptionsText={stateLoading ? 'Loading states…' : 'No states found'}
               />
             </Grid>
 
@@ -350,22 +314,16 @@ export default function PartnerLocationFields({
                 <SearchableSelect
                   isMulti
                   label="Cities"
-                  placeholder={cityBrowseState ? 'Search cities (min 2 chars)' : 'Pick a state first'}
+                  placeholder={cityBrowseState ? 'Search and select cities' : 'Pick a state first'}
                   options={cityOptions}
                   value={citiesForBrowseState}
                   onChange={handleCitiesChange}
-                  onSearch={handleCitySearch}
                   getOptionLabel={locationLabel}
                   isOptionEqualToValue={(a, b) => a?.code === b?.code && a?.stateCode === b?.stateCode}
                   loading={cityLoading}
                   disabled={!cityBrowseState}
                   error={fieldErrors.partnerCity || citySearchError}
-                  helperText={
-                    !cityBrowseState
-                      ? 'Select a state above to search its cities'
-                      : (citySearchError || 'Selecting cities removes that state from Whole States')
-                  }
-                  noOptionsText={cityLoading ? 'Searching…' : 'No cities found'}
+                  noOptionsText={cityLoading ? 'Loading cities…' : 'No cities found'}
                 />
               </WizardFieldAnchor>
             </Grid>

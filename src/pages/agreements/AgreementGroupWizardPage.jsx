@@ -48,7 +48,7 @@ import CommercialStructureStep from './wizard/CommercialStructureStep';
 import Step5GroupReview from './wizard/Step5GroupReview';
 import WizardErrorBoundary from '../../components/wizard/WizardErrorBoundary';
 import { resolveStructureType, STRUCTURE_TYPE } from '../../constants/commercialStructure';
-import { incomeTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
+import { incomeTypeChangedFromBaseline, agreementTypeChangedFromBaseline } from '../../utils/wizardStateUtils';
 import {
   incompleteDraftLabels,
   loadGroupDraftReviewData,
@@ -184,8 +184,7 @@ export default function AgreementGroupWizardPage() {
     const currentIncome = state.agreement?.details?.incomeTypeId;
     const currentAgreementType = state.agreement?.details?.agreementTypeId;
     const incomeChanged = incomeTypeChangedFromBaseline(baselineIncomeTypeId, currentIncome);
-    const agreementTypeChanged = baselineAgreementTypeId != null
-      && String(baselineAgreementTypeId) !== String(currentAgreementType);
+    const agreementTypeChanged = agreementTypeChangedFromBaseline(baselineAgreementTypeId, currentAgreementType);
     if (!incomeChanged && !agreementTypeChanged) return null;
 
     const nextState = resetAfterIncomeTypeChange(state);

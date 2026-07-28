@@ -1,9 +1,11 @@
 import React from 'react';
 import {
   Box, Checkbox, Chip, Paper, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Tooltip, Typography, Button, CircularProgress
+  TableContainer, TableHead, TableRow, Tooltip, Typography, Button, CircularProgress,
+  TablePagination, TextField, InputAdornment, LinearProgress
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SearchIcon from '@mui/icons-material/Search';
 
 export default function StoreMappingTable({
   stores = [],
@@ -14,10 +16,17 @@ export default function StoreMappingTable({
   isAllSelected = false,
   onBulkDelete,
   deleting = false,
+  loading = false,
   maxHeight = 360,
+  // Pagination & Search props
+  page,
+  rowsPerPage,
+  totalElements,
+  onPageChange,
+  onRowsPerPageChange,
+  search,
+  onSearchChange,
 }) {
-  if (!stores || stores.length === 0) return null;
-
   // Defensive helper to handle both Set and Array prop types safely
   const isRowSelected = (id) => {
     if (!id) return false;
@@ -35,19 +44,39 @@ export default function StoreMappingTable({
 
   const selectedCount = getSelectedCount();
 
+  const hasPagination = page !== undefined && rowsPerPage !== undefined && Boolean(totalElements) && totalElements > 0;
+  const hasSearch = onSearchChange !== undefined;
+
   return (
     <Paper variant="outlined" sx={{ mt: 2, borderRadius: '12px', overflow: 'hidden', borderColor: 'divider' }}>
       
-      {/* Table Header Toolbar containing Select All & Delete Selected controls */}
-      {selectable && (
-        <Box sx={{
-          px: 2.5, py: 1.5, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider',
-          display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5
-        }}>
+      {/* Top Toolbar containing Search input on Left & Action buttons on Right */}
+      <Box sx={{
+        px: 2.5, py: 1.5, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider',
+        display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5
+      }}>
+        {hasSearch ? (
+          <TextField
+            size="small"
+            placeholder="Search by Store ID or Name..."
+            value={search || ''}
+            onChange={(e) => onSearchChange(e.target.value)}
+            sx={{ width: 300, bgcolor: 'white' }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+        ) : (
           <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', fontSize: '0.75rem' }}>
-            Mapped Outlets ({stores.length})
+            Mapped Outlets ({hasPagination ? totalElements : stores.length})
           </Typography>
+        )}
 
+        {selectable && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Button
               size="small"
@@ -72,8 +101,10 @@ export default function StoreMappingTable({
               {deleting ? 'Deleting...' : `Delete Selected (${selectedCount})`}
             </Button>
           </Box>
-        </Box>
-      )}
+        )}
+      </Box>
+
+      {loading && <LinearProgress sx={{ height: 2 }} />}
 
       {/* Main Table Grid */}
       <TableContainer sx={{ maxHeight }}>
@@ -91,81 +122,133 @@ export default function StoreMappingTable({
                   />
                 </TableCell>
               )}
-              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '22%' }}>
-                Store Code
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '15%' }}>
+                Store ID
               </TableCell>
-              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '50%' }}>
-                Store Name
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '25%' }}>
+                Name
               </TableCell>
-              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '28%' }}>
-                State Scope
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '15%' }}>
+                State
+              </TableCell>
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '15%' }}>
+                City
+              </TableCell>
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '30%' }}>
+                Address
               </TableCell>
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {stores.map((store, index) => {
-              const rowId = store.mappingId || store.id;
-              const isSelected = isRowSelected(rowId);
+            {stores.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={selectable ? 6 : 5} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {loading ? 'Loading mapped outlets...' : 'No outlets mapped'}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              stores.map((store, index) => {
+                const rowId = store.mappingId || store.id || index;
+                const isSelected = isRowSelected(rowId);
+                const displayStoreId = store.storeId || store.storeCode || store.code;
+                const displayName = store.storeName || store.name || 'N/A';
+                const displayState = store.state || 'N/A';
+                const displayCity = store.city || 'N/A';
+                const displayAddress = store.address || 'N/A';
 
-              return (
-                <TableRow
-                  key={rowId || index}
-                  hover
-                  selected={isSelected}
-                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                >
-                  {selectable && (
-                    <TableCell padding="checkbox">
-                      <Checkbox
+                return (
+                  <TableRow
+                    key={rowId || index}
+                    hover
+                    selected={isSelected}
+                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                  >
+                    {selectable && (
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          size="small"
+                          checked={isSelected}
+                          onChange={() => onToggle?.(rowId)}
+                          slotProps={{ input: { 'aria-label': `Select ${displayStoreId}` } }}
+                        />
+                      </TableCell>
+                    )}
+
+                    {/* Store ID Chip */}
+                    <TableCell>
+                      <Chip
+                        label={displayStoreId}
                         size="small"
-                        checked={isSelected}
-                        onChange={() => onToggle?.(rowId)}
-                        slotProps={{ input: { 'aria-label': `Select ${store.storeCode}` } }}
+                        sx={{
+                          fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem',
+                          bgcolor: 'grey.100', color: 'text.primary', borderRadius: '6px', px: 0.5
+                        }}
                       />
                     </TableCell>
-                  )}
 
-                  {/* Monospace Store Code Pill */}
-                  <TableCell>
-                    <Chip
-                      label={store.storeCode}
-                      size="small"
-                      sx={{
-                        fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem',
-                        bgcolor: 'grey.100', color: 'text.primary', borderRadius: '6px', px: 0.5
-                      }}
-                    />
-                  </TableCell>
+                    {/* Store Name */}
+                    <TableCell sx={{ maxWidth: 150 }}>
+                      <Tooltip title={displayName} placement="top-start">
+                        <Typography variant="body2" sx={{
+                          fontWeight: 500, fontSize: '0.8125rem', color: 'text.primary',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                        }}>
+                          {displayName}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
 
-                  {/* Store Name with Overflow Truncation & Hover Tooltip */}
-                  <TableCell sx={{ maxWidth: 220 }}>
-                    <Tooltip title={store.storeName} placement="top-start">
-                      <Typography variant="body2" sx={{
-                        fontWeight: 500, fontSize: '0.8125rem', color: 'text.primary',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                      }}>
-                        {store.storeName}
+                    {/* State */}
+                    <TableCell>
+                      <Chip
+                        label={displayState}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        sx={{ fontWeight: 600, fontSize: '0.725rem', height: 22 }}
+                      />
+                    </TableCell>
+
+                    {/* City */}
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                        {displayCity}
                       </Typography>
-                    </Tooltip>
-                  </TableCell>
+                    </TableCell>
 
-                  {/* State Pill Badge */}
-                  <TableCell>
-                    <Chip
-                      label={store.stateName}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                      sx={{ fontWeight: 600, fontSize: '0.725rem', height: 22 }}
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+                    {/* Address */}
+                    <TableCell sx={{ maxWidth: 200 }}>
+                      <Tooltip title={displayAddress} placement="top-start">
+                        <Typography variant="body2" sx={{
+                          fontSize: '0.8125rem', color: 'text.secondary',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                        }}>
+                          {displayAddress}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </TableContainer>
+
+      {hasPagination && (
+        <TablePagination
+          component="div"
+          count={totalElements}
+          page={page}
+          onPageChange={onPageChange}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={onRowsPerPageChange}
+          rowsPerPageOptions={[10, 20, 50]}
+        />
+      )}
     </Paper>
   );
 }

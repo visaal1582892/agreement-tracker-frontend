@@ -7,8 +7,9 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Tabs, Tab,
   List, ListItemButton, ListItemText, Accordion, AccordionSummary, AccordionDetails,
   Breadcrumbs, Link as MuiLink, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Menu, IconButton, ListItemIcon
 } from '@mui/material';
-import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext } from '@mui/icons-material';
+import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext, AutoMode, Check, Close } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -30,6 +31,7 @@ import { isAssetRentalIncomeType, isCommercialContractsIncomeType, isAdHocIncome
 import { CAP_UNIT } from '../../constants/capUnit';
 import { PAYOUT_FREQUENCY_OPTIONS } from '../../constants/commercialStructure';
 import StoreMappingReviewSummary from './wizard/StoreMappingReviewSummary';
+import DocumentFileLink from '../../components/upload/DocumentFileLink';
 import dayjs from 'dayjs';
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -129,6 +131,11 @@ export default function AgreementDetailPage({
   const submitModal = useModal();
   const [terminateData, setTerminateData] = useState({ comments: '', requestedTerminationDate: '' });
   const [slabs, setSlabs] = useState([]);
+
+  const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
+  const actionsMenuOpen = Boolean(actionsMenuAnchor);
+  const handleActionsMenuOpen = (event) => setActionsMenuAnchor(event.currentTarget);
+  const handleActionsMenuClose = () => setActionsMenuAnchor(null);
 
   const loadVersionDetail = useCallback(async (versionId) => {
     if (!versionId) return null;
@@ -332,6 +339,9 @@ export default function AgreementDetailPage({
     && Boolean(activeVersionId && selectedVersionId !== activeVersionId);
   const requiresSubmitRevisionReason = (agreement?.versionNumber ?? 1) > 1;
 
+  const maxVersionInGroup = Math.max(...versions.map(v => v.versionNumber), 0);
+  const isLatestVersion = agreement?.versionNumber === maxVersionInGroup;
+
   const actions = agreement
     ? getDetailPageActions(
       { ...agreement, id: selectedVersionId },
@@ -480,14 +490,110 @@ export default function AgreementDetailPage({
 
       {/* Header */}
       {!isOperationalReview && (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>{displayName}</Typography>
-          <Typography variant="body2" color="text.secondary">
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 2 }}>
+        <Box sx={{ flex: '1 1 auto', minWidth: 0, pr: 2 }}>
+          <Typography variant="h5" fontWeight={700} sx={{ wordBreak: 'break-word' }}>{displayName}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
             {group?.agreementGroupName || group?.name}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexShrink: 0 }}>
+          {/* Action Buttons */}
+          {agreement && (
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+              {!isLatestVersion && (
+                <Alert severity="warning" sx={{ py: 0, px: 2, display: 'flex', alignItems: 'center', '& .MuiAlert-message': { padding: '4px 0' } }}>
+                  A newer version already exists for this agreement group.
+                </Alert>
+              )}
+              {isLatestVersion && actions?.submit && (
+                <Button variant="contained" onClick={submitModal.open} sx={{ bgcolor: BRAND.red }}>
+                  Submit for Approval
+                </Button>
+              )}
+
+              {/* Actions Dropdown Menu */}
+              {isLatestVersion && (actions?.approve || actions?.editDraft || actions?.editApproved || actions?.revise || (showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || (daysToExpiry != null && daysToExpiry <= 90) || Boolean(agreement?.inProgressFlag))) || showRenewButton || actions?.terminate || actions?.transfer) && (
+                <>
+                  <Button
+                    variant="outlined"
+                    onClick={handleActionsMenuOpen}
+                    endIcon={<ExpandMore />}
+                    color="inherit"
+                    sx={{ color: 'text.primary', borderColor: 'divider', bgcolor: 'white' }}
+                  >
+                    Actions
+                  </Button>
+                  <Menu
+                    anchorEl={actionsMenuAnchor}
+                    open={actionsMenuOpen}
+                    onClose={handleActionsMenuClose}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    slotProps={{ paper: { sx: { mt: 1, minWidth: 200, boxShadow: '0px 4px 20px rgba(0,0,0,0.08)' } } }}
+                  >
+                    {actions?.approve && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); handleApprove(); }}>
+                        <ListItemIcon><Check fontSize="small" sx={{ color: BRAND.green }} /></ListItemIcon>
+                        <ListItemText sx={{ color: BRAND.green, fontWeight: 600 }}>Approve</ListItemText>
+                      </MenuItem>
+                    )}
+                    {actions?.approve && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); rejectModal.open(); }}>
+                        <ListItemIcon><Close fontSize="small" color="error" /></ListItemIcon>
+                        <ListItemText sx={{ color: 'error.main', fontWeight: 600 }}>Reject</ListItemText>
+                      </MenuItem>
+                    )}
+                    {actions?.approve && <Divider />}
+
+                    {actions?.editDraft && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); navigate(`/agreements/${selectedVersionId}/edit`); }}>
+                        <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+                        <ListItemText>Edit Draft</ListItemText>
+                      </MenuItem>
+                    )}
+                    {actions?.editApproved && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); navigate(buildAgreementEditPath(group?.currentVersionId || selectedVersionId)); }}>
+                        <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+                        <ListItemText>Edit (New Version)</ListItemText>
+                      </MenuItem>
+                    )}
+                    {actions?.revise && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); navigate(buildAgreementEditPath(selectedVersionId)); }}>
+                        <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+                        <ListItemText>Revise & Resubmit</ListItemText>
+                      </MenuItem>
+                    )}
+                    {showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || (daysToExpiry != null && daysToExpiry <= 90) || Boolean(agreement?.inProgressFlag)) && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); handleToggleInProgress(); }}>
+                        <ListItemIcon><AutoMode fontSize="small" /></ListItemIcon>
+                        <ListItemText>{agreement?.inProgressFlag ? 'Clear Discussions' : 'Mark Discussions in Progress'}</ListItemText>
+                      </MenuItem>
+                    )}
+                    {showRenewButton && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); handleRenew(); }}>
+                        <ListItemIcon><History fontSize="small" /></ListItemIcon>
+                        <ListItemText>Renew Agreement</ListItemText>
+                      </MenuItem>
+                    )}
+                    {actions?.transfer && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); transferModal.open(); }}>
+                        <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
+                        <ListItemText>Transfer Ownership</ListItemText>
+                      </MenuItem>
+                    )}
+                    {actions?.terminate && (
+                      <MenuItem onClick={() => { handleActionsMenuClose(); terminateModal.open(); }}>
+                        <ListItemIcon><PowerSettingsNew fontSize="small" color="error" /></ListItemIcon>
+                        <ListItemText sx={{ color: 'error.main' }}>Terminate</ListItemText>
+                      </MenuItem>
+                    )}
+                  </Menu>
+                </>
+              )}
+            </Box>
+          )}
+
           {/* Version Switcher */}
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <Select value={selectedVersionId || ''} onChange={(e) => setSelectedVersionId(e.target.value)}>
@@ -582,9 +688,9 @@ export default function AgreementDetailPage({
           </List>
         </Paper>
       ) : (
-      <Grid container spacing={3}>
-        {/* Left: Data */}
-        <Grid size={{ xs: 12, md: 8 }}>
+      <Box>
+        {/* Main Details Section */}
+        <Box sx={{ width: '100%' }}>
           {agreement ? (
             <>
               <Accordion defaultExpanded elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
@@ -612,38 +718,38 @@ export default function AgreementDetailPage({
               <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
                 <Typography fontWeight={600} sx={{ mb: 1.5 }}>Agreement Details</Typography>
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                     <Typography variant="caption" color="text.secondary">Agreement Name</Typography>
                     <Typography variant="body2" fontWeight={600}>{agreement.agreementName || '—'}</Typography>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                     <Typography variant="caption" color="text.secondary">Agreement Group</Typography>
                     <Typography variant="body2">{agreement.agreementGroupName || group?.agreementGroupName || group?.name || '—'}</Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                     <Typography variant="caption" color="text.secondary">Income Type</Typography>
                     <Typography variant="body2">{agreement.incomeTypeName || '—'}</Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                     <Typography variant="caption" color="text.secondary">Agreement Type</Typography>
                     <Typography variant="body2">{agreement.agreementTypeName || group?.agreementTypeName || '—'}</Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                     <Typography variant="caption" color="text.secondary">Start Date</Typography>
                     <Typography variant="body2">{agreement.startDate ? dayjs(agreement.startDate).format('DD MMM YYYY') : '—'}</Typography>
                   </Grid>
-                  <Grid size={{ xs: 6, sm: 3 }}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                     <Typography variant="caption" color="text.secondary">Expiry Date</Typography>
                     <Typography variant="body2">{agreement.expiryDate ? dayjs(agreement.expiryDate).format('DD MMM YYYY') : '—'}</Typography>
                   </Grid>
                   {!isAssetRental && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                       <Typography variant="caption" color="text.secondary">Commercial Structure</Typography>
                       <Typography variant="body2">{agreement.commercialStructure || '—'}</Typography>
                     </Grid>
                   )}
                   {!isAssetRental && agreement.commercialStructure === 'FLAT' && (
-                    <Grid size={{ xs: 6, sm: 3 }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                       <Typography variant="caption" color="text.secondary">Commercial Value</Typography>
                       <Typography variant="body2">₹{Number(agreement.commercialValue || 0).toLocaleString('en-IN')}</Typography>
                     </Grid>
@@ -716,7 +822,7 @@ export default function AgreementDetailPage({
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                         Participating Stores
                       </Typography>
-                      <StoreMappingReviewSummary stores={assetStoreMappings} />
+                      <StoreMappingReviewSummary stores={assetStoreMappings} versionId={selectedVersionId} />
                     </Grid>
                   </Grid>
                 </Paper>
@@ -792,160 +898,131 @@ export default function AgreementDetailPage({
                 </Paper>
               )}
 
-              {!isAssetRental && (
-                <Accordion elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-                  <AccordionSummary expandIcon={<ExpandMore />}>
-                    <Typography fontWeight={600}>Products ({agreement.products?.length || 0})</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    {agreement.products?.map((p) => (
-                      <Chip key={p.productId} label={`${p.productName} (${p.divisionName || ''})`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+              {/* Supporting Documents Section */}
+              <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                <Typography fontWeight={600} sx={{ mb: 1.5 }}>
+                  Supporting Documents ({agreement.documents?.length || 0})
+                </Typography>
+                {!agreement.documents || agreement.documents.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No supporting documents uploaded.</Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {agreement.documents.map((doc, idx) => (
+                      <Box key={doc.id || doc.fileUrl || idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Chip
+                          label={doc.documentType || 'Document'}
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          sx={{ fontWeight: 600, fontSize: '0.725rem' }}
+                        />
+                        <DocumentFileLink
+                          fileUrl={doc.fileUrl}
+                          fileName={doc.fileName || doc.originalFilename || doc.originalFileName || 'View Document'}
+                        />
+                      </Box>
                     ))}
-                  </AccordionDetails>
-                </Accordion>
+                  </Box>
+                )}
+              </Paper>
+
+              {/* Selected / Computed Products Table */}
+              {!isAssetRental && (
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>
+                    Selected Products ({agreement.products?.length || 0})
+                  </Typography>
+                  {!agreement.products || agreement.products.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">No products selected.</Typography>
+                  ) : (
+                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '8px', overflow: 'hidden', maxHeight: 360 }}>
+                      <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 1.25, px: 2 } }}>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '20%' }}>
+                              Product ID
+                            </TableCell>
+                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '35%' }}>
+                              Product Name
+                            </TableCell>
+                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '25%' }}>
+                              Division
+                            </TableCell>
+                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '20%' }}>
+                              Manufacturer
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {agreement.products.map((p, idx) => (
+                            <TableRow key={p.productId || idx} hover>
+                              <TableCell>
+                                <Chip
+                                  label={p.productId}
+                                  size="small"
+                                  sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', bgcolor: 'grey.100', borderRadius: '6px' }}
+                                />
+                              </TableCell>
+                              <TableCell sx={{ fontWeight: 500, fontSize: '0.8125rem' }}>
+                                {p.productName}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: '0.8125rem' }}>
+                                {p.divisionName || '—'}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: '0.8125rem' }}>
+                                {p.manufacturerName || '—'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Paper>
               )}
             </>
           ) : (
             <Typography color="text.secondary">Select a version to view details.</Typography>
           )}
-        </Grid>
-
-        {/* Right: Timeline + Actions */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          {/* Actions */}
-          {agreement && !isOperationalReview && (
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} mb={1.5}>Actions</Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {actions?.submit && (
-                  <Button variant="contained" fullWidth onClick={submitModal.open} sx={{ bgcolor: BRAND.red }}>
-                    Submit for Approval
-                  </Button>
-                )}
-                {actions?.editDraft && (
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    startIcon={<Edit />}
-                    onClick={() => navigate(`/agreements/${selectedVersionId}/edit`)}
-                    sx={{ bgcolor: BRAND.red }}
-                  >
-                    Edit Draft
-                  </Button>
-                )}
-                {actions?.approve && (
-                  <>
-                    <Button variant="contained" fullWidth onClick={handleApprove} sx={{ bgcolor: BRAND.green }}>
-                      ✓ Approve
-                    </Button>
-                    <Button variant="outlined" color="error" fullWidth onClick={rejectModal.open}>
-                      ✗ Reject
-                    </Button>
-                  </>
-                )}
-                {actions?.editApproved && (
-                  <Button variant="outlined" fullWidth startIcon={<Edit />}
-                    onClick={() => navigate(buildAgreementEditPath(
-                      group?.currentVersionId || selectedVersionId,
-                    ))}>
-                    Edit (New Version)
-                  </Button>
-                )}
-                {actions?.revise && (
-                  <Button variant="contained" fullWidth startIcon={<Edit />}
-                    onClick={() => navigate(buildAgreementEditPath(selectedVersionId))}
-                    sx={{ bgcolor: BRAND.red }}>
-                    Revise & Resubmit
-                  </Button>
-                )}
-                {showLifecycleActions && (agreement?.computedStatus === 'EXPIRED'
-                  || (daysToExpiry != null && daysToExpiry <= 90)
-                  || Boolean(agreement?.inProgressFlag)) && (
-                  <Button
-                    variant="outlined"
-                    color="warning"
-                    fullWidth
-                    onClick={handleToggleInProgress}
-                  >
-                    {agreement?.inProgressFlag ? 'Clear Discussions In Progress' : 'Mark Discussions in Progress'}
-                  </Button>
-                )}
-                {showRenewButton && (
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    onClick={handleRenew}
-                    sx={{ bgcolor: BRAND.red }}
-                  >
-                    Renew Agreement
-                  </Button>
-                )}
-                {actions?.terminate && (
-                  <Button variant="outlined" color="error" fullWidth startIcon={<PowerSettingsNew />} onClick={terminateModal.open}>
-                    Terminate
-                  </Button>
-                )}
-                {actions?.transfer && (
-                  <Button variant="outlined" fullWidth startIcon={<SwapHoriz />} onClick={transferModal.open}>
-                    Transfer Ownership
-                  </Button>
-                )}
-                {!actions?.submit
-                  && !actions?.editDraft
-                  && !actions?.approve
-                  && !actions?.editApproved
-                  && !actions?.revise
-                  && !showRenewButton
-                  && !actions?.terminate
-                  && !actions?.transfer
-                  && !(showLifecycleActions && (
-                    agreement?.computedStatus === 'EXPIRED'
-                    || (daysToExpiry != null && daysToExpiry <= 90)
-                    || Boolean(agreement?.inProgressFlag)
-                  )) && (
-                  <Typography variant="body2" color="text.secondary">
-                    No actions available for your role on this version.
-                    Edit / Renew / Terminate require ownership + edit rights on the current approved version.
-                  </Typography>
-                )}
-              </Box>
-            </Paper>
-          )}
 
           {/* Approval Timeline */}
-          <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="subtitle2" fontWeight={600} mb={1.5}>Approval Timeline</Typography>
-            {timeline.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No activity yet</Typography>
-            ) : (
-              <Stepper orientation="vertical" nonLinear>
-                {timeline.map((t, i) => (
-                  <Step key={t.id} active completed>
-                    <StepLabel
-                      slots={{ stepIcon: TimelineStepIcon }}
-                      slotProps={{
-                        stepIcon: {
-                          color: ACTION_COLOR[t.operationalEvent || t.action] || '#999',
-                        },
-                      }}
-                    >
-                      <Typography variant="body2" fontWeight={600}>
-                        {formatTimelineAction(t)} — {t.actorName || `User ${t.actorUserId}`}
-                      </Typography>
-                    </StepLabel>
-                    <StepContent>
-                      {t.remarks && <Typography variant="caption" color="text.secondary">"{t.remarks}"</Typography>}
-                      <Typography variant="caption" display="block" color="text.secondary">
-                        {t.timestamp ? dayjs(t.timestamp).format('DD MMM YYYY, hh:mm A') : ''}
-                      </Typography>
-                    </StepContent>
-                  </Step>
-                ))}
-              </Stepper>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+          {agreement && (
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', mt: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} mb={3}>Approval Timeline</Typography>
+              {timeline.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No activity yet</Typography>
+              ) : (
+                <Stepper orientation="horizontal" nonLinear alternativeLabel>
+                  {timeline.map((t, i) => (
+                    <Step key={t.id} active completed>
+                      <StepLabel
+                        slots={{ stepIcon: TimelineStepIcon }}
+                        slotProps={{
+                          stepIcon: {
+                            color: ACTION_COLOR[t.operationalEvent || t.action] || '#999',
+                          },
+                        }}
+                        optional={
+                          <Box sx={{ mt: 1, textAlign: 'center' }}>
+                            {t.remarks && <Typography variant="caption" color="text.secondary" display="block">"{t.remarks}"</Typography>}
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {t.timestamp ? dayjs(t.timestamp).format('DD MMM YYYY, hh:mm A') : ''}
+                            </Typography>
+                          </Box>
+                        }
+                      >
+                        <Typography variant="body2" fontWeight={600}>
+                          {formatTimelineAction(t)} — {t.actorName || `User ${t.actorUserId}`}
+                        </Typography>
+                      </StepLabel>
+                    </Step>
+                  ))}
+                </Stepper>
+              )}
+            </Paper>
+          )}
+        </Box>
+      </Box>
       )}
 
       <Dialog

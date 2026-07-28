@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  Alert, Box, Button, CircularProgress, Table, TableBody, TableCell,
-  TableHead, TableRow, Typography,
+  Alert, Box, Button, CircularProgress, Typography,
 } from '@mui/material';
 import { Download, UploadFile } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
@@ -15,14 +14,16 @@ import {
   parseStoreMappings,
 } from '../../../api/revisionCommercialApi';
 import { fetchStoreMappings } from '../../../api/storeMappingApi';
+import StoreMappingTable from './StoreMappingTable';
 
 function normalizeStoreRow(store) {
   return {
+    id: store.storeId || store.mappingId || store.id,
     storeId: store.storeId,
-    storeCode: store.storeCode,
     storeName: store.storeName,
-    stateId: store.stateId,
-    stateName: store.stateName,
+    state: store.state,
+    city: store.city,
+    address: store.address,
   };
 }
 
@@ -45,13 +46,27 @@ export default function RevisionStoreMappingSection({
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceLoadError, setSourceLoadError] = useState(null);
 
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [search, setSearch] = useState('');
+  const [sourceTotalElements, setSourceTotalElements] = useState(0);
+  
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   const overrideStores = Array.isArray(storeMappings) ? storeMappings : null;
-  const displayStores = overrideStores ?? sourceStores;
   const showingSourcePreview = overrideStores == null;
 
+  // Reset page/search/selection when toggle preview mode
   useEffect(() => {
-    if (!sourceVersionId) {
+    setPage(0);
+    setSearch('');
+    setSelectedIds(new Set());
+  }, [showingSourcePreview]);
+
+  useEffect(() => {
+    if (!sourceVersionId || !showingSourcePreview) {
       setSourceStores([]);
+      setSourceTotalElements(0);
       setSourceLoadError(null);
       return undefined;
     }
@@ -60,27 +75,50 @@ export default function RevisionStoreMappingSection({
     setSourceLoading(true);
     setSourceLoadError(null);
 
-    fetchStoreMappings(sourceVersionId)
-      .then((data) => {
+    const loadData = async () => {
+      try {
+        const response = await fetchStoreMappings(sourceVersionId, {
+          page: page,
+          size: rowsPerPage,
+          search: search || undefined
+        });
         if (cancelled) return;
-        const list = Array.isArray(data) ? data.map(normalizeStoreRow) : [];
+        let list = [];
+        let total = 0;
+        if (Array.isArray(response)) {
+          list = response;
+          total = response.length;
+        } else if (response && Array.isArray(response.content)) {
+          list = response.content;
+          total = response.totalElements ?? response.content.length;
+        } else if (response && Array.isArray(response.data)) {
+          list = response.data;
+          total = response.totalElements ?? response.data.length;
+        }
+        
+        list = list.map(normalizeStoreRow);
         setSourceStores(list);
-      })
-      .catch((err) => {
+        setSourceTotalElements(total);
+      } catch (err) {
         console.error('Failed to load source store mappings', err);
         if (!cancelled) {
           setSourceStores([]);
+          setSourceTotalElements(0);
           setSourceLoadError(
             err.response?.data?.message || 'Unable to load previous store mappings',
           );
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setSourceLoading(false);
-      });
+      }
+    };
 
-    return () => { cancelled = true; };
-  }, [sourceVersionId]);
+    const timer = setTimeout(loadData, search ? 300 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [sourceVersionId, showingSourcePreview, page, rowsPerPage, search]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -128,6 +166,77 @@ export default function RevisionStoreMappingSection({
     onParsed?.({ storeMappings: null, storeParseErrors: [] });
   };
 
+  const handleToggle = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllToggle = () => {
+    const currentIds = storesToDisplay.map((s) => s.id);
+    const allSelected = currentIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        currentIds.forEach((id) => next.delete(id));
+      } else {
+        currentIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    
+    if (showingSourcePreview) {
+      setSourceLoading(true);
+      try {
+        const response = await fetchStoreMappings(sourceVersionId, { size: 10000 });
+        let list = [];
+        if (Array.isArray(response)) list = response;
+        else if (response && Array.isArray(response.content)) list = response.content;
+        else if (response && Array.isArray(response.data)) list = response.data;
+
+        const allSourceStores = list.map(normalizeStoreRow);
+        const nextStores = allSourceStores.filter(s => !selectedIds.has(s.id));
+        onParsed?.({ storeMappings: nextStores, storeParseErrors: [] });
+        setSelectedIds(new Set());
+        setPage(0);
+        enqueueSnackbar('Converted to in-memory override and deleted selected stores.', { variant: 'info' });
+      } catch (err) {
+        enqueueSnackbar('Failed to fetch full source list for deletion.', { variant: 'error' });
+      } finally {
+        setSourceLoading(false);
+      }
+    } else {
+      const nextStores = overrideStores.filter(s => !selectedIds.has(s.id));
+      onParsed?.({ storeMappings: nextStores, storeParseErrors: parseErrors });
+      setSelectedIds(new Set());
+      setPage(0);
+    }
+  };
+
+  const handleDeleteAll = () => {
+    onParsed?.({ storeMappings: [], storeParseErrors: [] });
+    setSelectedIds(new Set());
+    setPage(0);
+  };
+
+  // Client-side filtering and slicing for in-memory override stores
+  const filteredOverride = (overrideStores || []).filter(s =>
+    !search ||
+    s.storeId?.toLowerCase().includes(search.toLowerCase()) ||
+    s.storeName?.toLowerCase().includes(search.toLowerCase())
+  );
+  const displayedOverride = filteredOverride.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+
+  const totalElements = showingSourcePreview ? sourceTotalElements : filteredOverride.length;
+  const storesToDisplay = showingSourcePreview ? sourceStores : displayedOverride;
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Typography variant="body2" color="text.secondary">
@@ -158,6 +267,15 @@ export default function RevisionStoreMappingSection({
             Keep source stores
           </Button>
         )}
+        <Button
+          size="small"
+          variant="text"
+          color="error"
+          onClick={handleDeleteAll}
+          disabled={totalElements === 0}
+        >
+          Delete All Stores
+        </Button>
         <input
           ref={fileInputRef}
           type="file"
@@ -213,36 +331,37 @@ export default function RevisionStoreMappingSection({
           <CircularProgress size={16} />
           <Typography variant="body2" color="text.secondary">Loading previous stores…</Typography>
         </Box>
-      ) : displayStores.length > 0 ? (
+      ) : (totalElements > 0 || search) ? (
         <>
           <Typography variant="subtitle2" fontWeight={700}>
             {showingSourcePreview
-              ? `Previous stores (${displayStores.length}) — kept on submit unless you upload a replacement`
-              : `Replacement stores (${displayStores.length}) — will replace source on submit`}
+              ? `Previous stores (${totalElements}) — kept on submit unless you upload a replacement`
+              : `Replacement stores (${totalElements}) — will replace source on submit`}
           </Typography>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Store Code</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>State</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {displayStores.slice(0, 50).map((s) => (
-                <TableRow key={s.storeId || s.storeCode}>
-                  <TableCell>{s.storeCode}</TableCell>
-                  <TableCell>{s.storeName}</TableCell>
-                  <TableCell>{s.stateName}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {displayStores.length > 50 && (
-            <Typography variant="caption" color="text.secondary">
-              Showing 50 of {displayStores.length} stores
-            </Typography>
-          )}
+          
+          <StoreMappingTable
+            stores={storesToDisplay}
+            selectable={true}
+            selectedIds={selectedIds}
+            onToggle={handleToggle}
+            onSelectAllToggle={handleSelectAllToggle}
+            onBulkDelete={handleBulkDelete}
+            isAllSelected={storesToDisplay.length > 0 && storesToDisplay.every(s => selectedIds.has(s.id))}
+            deleting={sourceLoading}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            totalElements={totalElements}
+            onPageChange={(e, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+            }}
+            search={search}
+            onSearchChange={(val) => {
+              setSearch(val);
+              setPage(0);
+            }}
+          />
         </>
       ) : (
         <Typography variant="body2" color="text.secondary">

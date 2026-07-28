@@ -14,16 +14,24 @@ export function normalizeExplicitScopeRules(rules = [], defaultRuleType = 'INCLU
     return { ruleType: defaultRuleType, rules: [] };
   }
 
-  const ruleType = rules[0]?.ruleType || defaultRuleType;
-  const normalizedRules = rules
-    .filter((rule) => rule?.id != null && rule.ruleType === ruleType)
-    .map((rule) => ({
-      id: rule.id,
-      ruleType,
-      name: rule.name || '',
-    }));
+  const firstRuleType = rules.find((r) => typeof r === 'object' && r?.ruleType)?.ruleType || defaultRuleType;
 
-  return { ruleType, rules: normalizedRules };
+  const normalizedRules = rules
+    .map((rule) => {
+      if (typeof rule === 'object' && rule !== null) {
+        const id = rule.id ?? rule.divisionId ?? rule.productId;
+        const ruleType = rule.ruleType || firstRuleType;
+        const name = rule.name ?? rule.divisionName ?? rule.productName ?? '';
+        return id != null ? { id, ruleType, name } : null;
+      }
+      if (rule != null) {
+        return { id: rule, ruleType: defaultRuleType, name: '' };
+      }
+      return null;
+    })
+    .filter((rule) => rule !== null && (rule.ruleType === firstRuleType || !rule.ruleType));
+
+  return { ruleType: firstRuleType, rules: normalizedRules };
 }
 
 export function buildExplicitScopeRules(selectedIds, ruleType, metaById, getLabel) {

@@ -52,8 +52,13 @@ export const integrationApi = {
       productRules,
     }),
 
-  searchVendors: (searchKey) =>
-    axiosInstance.get(ENDPOINTS.INTEGRATION_VENDORS, { params: { searchKey } }),
+  searchVendors: (searchKey, stateCodes) =>
+    axiosInstance.get(ENDPOINTS.INTEGRATION_VENDORS, {
+      params: {
+        searchKey,
+        ...(stateCodes?.length ? { stateCodes: stateCodes.join(',') } : {}),
+      },
+    }),
 
   getVendorsByIds: (ids) =>
     axiosInstance.get(ENDPOINTS.INTEGRATION_VENDORS_BY_IDS, {

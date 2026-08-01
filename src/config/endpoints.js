@@ -131,6 +131,11 @@ export const ENDPOINTS = {
   MASTER_AGREEMENT_TYPE_BY_ID: (id) => `${BASE}/master/agreement-types/${id}`,
   MASTER_AGREEMENT_TYPE_TOGGLE: (id) => `${BASE}/master/agreement-types/${id}/toggle-status`,
 
+  MASTER_CHANNELS: `${BASE}/master/channels`,
+  MASTER_CHANNELS_SEARCH: `${BASE}/master/channels/search`,
+  MASTER_CHANNEL_BY_ID: (id) => `${BASE}/master/channels/${id}`,
+  MASTER_CHANNEL_TOGGLE: (id) => `${BASE}/master/channels/${id}/toggle-status`,
+
   MASTER_ROLES: `${BASE}/master/roles`,
   MASTER_ROLES_SEARCH: `${BASE}/master/roles/search`,
   MASTER_ROLE_BY_ID: (id) => `${BASE}/master/roles/${id}`,

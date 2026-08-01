@@ -129,12 +129,14 @@ export default function ConfigurationStep({
                 selectedVendors={vendors.map((vendor) => ({
                   id: vendor.vendorId,
                   vendorName: vendor.vendorName,
+                  company: vendor.company,
                 }))}
                 onVendorChange={(selected) => updateFields({
                   vendorIds: selected.map((vendor) => vendor.id),
                   vendors: selected.map((vendor) => ({
                     vendorId: vendor.id,
                     vendorName: vendor.vendorName,
+                    company: vendor.company,
                   })),
                 })}
                 error={mergedFieldErrors.supplyVendors}

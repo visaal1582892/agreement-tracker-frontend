@@ -25,6 +25,7 @@ export const ROUTES = {
   MASTER: '/master',
   MASTER_AGREEMENT_GROUPS: '/master/agreement-groups',
   MASTER_INCOME_TYPES: '/master/income-types',
+  MASTER_CHANNELS: '/master/channels',
   MASTER_AGREEMENT_TYPES: '/master/agreement-types',
   MASTER_PRICE_OFF_LOCATIONS: '/master/price-off-locations',
   MASTER_USERS: '/master/users',

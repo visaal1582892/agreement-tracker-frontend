@@ -17,12 +17,14 @@ function normalizeVendor(item) {
   return {
     id: toNumericId(item.vendorId ?? item.id),
     vendorName: item.vendorName || '',
+    company: item.company,
   };
 }
 
 function formatVendorLabel(vendor) {
   if (!vendor) return '';
-  return `${vendor.vendorName} (ID: ${vendor.id})`;
+  const stateCode = vendor.company?.state || 'NA';
+  return `${stateCode}-${vendor.vendorName} (ID: ${vendor.id})`;
 }
 
 export default function Step2SupplyVendors({
@@ -36,8 +38,28 @@ export default function Step2SupplyVendors({
   const [fetchedVendors, setFetchedVendors] = useState([]);
   const [resolvedVendors, setResolvedVendors] = useState([]);
   const [isVendorLoading, setIsVendorLoading] = useState(false);
+  const [allStates, setAllStates] = useState([]);
+  const [selectedStates, setSelectedStates] = useState([]);
 
   const debouncedVendorSearch = useDebounce(vendorSearchText, VENDOR_SEARCH_DEBOUNCE_MS);
+
+  useEffect(() => {
+    let mounted = true;
+    integrationApi.searchStates('')
+      .then(({ data }) => {
+        if (!mounted) return;
+        const options = Array.isArray(data) ? data.map((item) => ({
+          ...item,
+          id: item.code,
+          label: `${item.name} (${item.code})`,
+        })) : [];
+        setAllStates(options);
+      })
+      .catch((err) => {
+        console.error('Failed to load states', err);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     const trimmedSearch = debouncedVendorSearch.trim();
@@ -74,7 +96,8 @@ export default function Step2SupplyVendors({
           if (!cancelled) setIsVendorLoading(false);
         });
     } else {
-      integrationApi.searchVendors(trimmedSearch)
+      const stateCodes = selectedStates.map(s => s.code);
+      integrationApi.searchVendors(trimmedSearch, stateCodes)
         .then((response) => {
           if (cancelled) return;
           const items = Array.isArray(response.data) ? response.data : [];
@@ -92,7 +115,7 @@ export default function Step2SupplyVendors({
     }
 
     return () => { cancelled = true; };
-  }, [debouncedVendorSearch]);
+  }, [debouncedVendorSearch, selectedStates]);
 
   useEffect(() => {
     if (!vendorIds?.length) {
@@ -140,7 +163,19 @@ export default function Step2SupplyVendors({
   return (
     <Box sx={{ mb: 0 }}>
       <Grid container spacing={3}>
-        <Grid size={12}>
+        <Grid size={{ xs: 12, md: 5 }}>
+          <SearchableSelect
+            isMulti
+            label="State Filter"
+            placeholder="All States"
+            options={allStates}
+            value={selectedStates}
+            onChange={(val) => setSelectedStates(val || [])}
+            isOptionEqualToValue={(a, b) => a?.code === b?.code}
+            disabled={disabled}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 7 }}>
           <WizardFieldAnchor field="supplyVendors" error={error}>
             <SearchableSelect
               label="Supply Vendors"
@@ -153,7 +188,7 @@ export default function Step2SupplyVendors({
               getOptionLabel={formatVendorLabel}
               renderOption={(vendor) => (
                 <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.25 }}>
-                  <Typography variant="body2">{vendor.vendorName}</Typography>
+                  <Typography variant="body2">{vendor.company?.state || 'NA'}-{vendor.vendorName}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     ID: {vendor.id}
                   </Typography>

@@ -81,7 +81,8 @@ export default function PartnerLocationFields({
           id: item.code,
           label: `${item.name} (${item.code})`,
         })) : [];
-        setAllStates(options);
+        const allOption = { id: 'ALL', code: 'IN', stateName: 'All States (India)', name: 'All States (India)', label: 'All States (India) (IN)' };
+        setAllStates([allOption, ...options]);
       })
       .catch((err) => {
         if (!mounted) return;
@@ -133,13 +134,22 @@ export default function PartnerLocationFields({
   }, [onUpdateDetails, onClearFieldError]);
 
   const handleStatesChange = useCallback((options) => {
-    const nextStates = Array.isArray(options) ? options : [];
+    let nextStates = Array.isArray(options) ? options : [];
+    const hasAllNow = nextStates.some(s => s.id === 'ALL' || s.code === 'IN');
+    const hadAllBefore = selectedStates.some(s => s.id === 'ALL' || s.code === 'IN');
+
+    if (hasAllNow && !hadAllBefore) {
+      nextStates = nextStates.filter(s => s.id === 'ALL' || s.code === 'IN');
+    } else if (hasAllNow && hadAllBefore && nextStates.length > 1) {
+      nextStates = nextStates.filter(s => s.id !== 'ALL' && s.code !== 'IN');
+    }
+
     const nextStateCodes = new Set(nextStates.map((s) => s.code));
     const nextCities = selectedCities.filter((city) => !nextStateCodes.has(city.stateCode));
     persist(nextStates, nextCities);
     onClearFieldError?.('partnerState');
     onClearFieldError?.('partnerCity');
-  }, [selectedCities, persist, onClearFieldError]);
+  }, [selectedStates, selectedCities, persist, onClearFieldError]);
 
   const handleCityBrowseStateChange = useCallback((option) => {
     setCityBrowseState(option || null);

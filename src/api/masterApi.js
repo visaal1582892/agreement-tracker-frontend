@@ -59,6 +59,16 @@ export const agreementTypeApi = {
   toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_AGREEMENT_TYPE_TOGGLE(id)),
 };
 
+// ── Channels ─────────────────────────────────────────────────────────────────
+export const channelApi = {
+  search:       (req) => search(ENDPOINTS.MASTER_CHANNELS_SEARCH, req),
+  list:         ()    => getAll(ENDPOINTS.MASTER_CHANNELS),
+  getById:      (id)  => getById(ENDPOINTS.MASTER_CHANNEL_BY_ID(id)),
+  create:       (d)   => create(ENDPOINTS.MASTER_CHANNELS, d),
+  update:       (id, d) => update(ENDPOINTS.MASTER_CHANNEL_BY_ID(id), d),
+  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_CHANNEL_TOGGLE(id)),
+};
+
 // ── Roles ───────────────────────────────────────────────────────────────────
 export const roleApi = {
   search:       (req) => search(ENDPOINTS.MASTER_ROLES_SEARCH, req),

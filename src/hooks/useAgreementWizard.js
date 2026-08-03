@@ -25,6 +25,7 @@ function mapPersistedAgreementFields(agreement, slabCount = null) {
     vendors: agreement.vendors?.map((v) => ({
       vendorId: v.vendorId,
       vendorName: v.vendorName,
+      state: v.state,
     })) ?? [],
     productRules: mapProductRulesFromApi(agreement),
     agreement: {
@@ -375,6 +376,7 @@ export function useAgreementWizard() {
       vendors: cloned.vendors?.map((v) => ({
         vendorId: v.vendorId,
         vendorName: v.vendorName,
+        state: v.state,
       })) ?? [],
       productRules: mapProductRulesFromApi(cloned),
       agreement: createBlankAgreement(),

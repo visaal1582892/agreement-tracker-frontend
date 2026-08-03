@@ -17,10 +17,12 @@ function ScopeReviewField({ label, children }) {
 
 function formatVendorLabel(vendor) {
   if (!vendor) return '';
+  const stateCode = vendor.state || '';
+  const prefix = stateCode ? `${stateCode}-` : '';
   if (vendor.vendorId != null) {
-    return `${vendor.vendorName} (ID: ${vendor.vendorId})`;
+    return `${prefix}${vendor.vendorName} (ID: ${vendor.vendorId})`;
   }
-  return vendor.vendorName || '';
+  return `${prefix}${vendor.vendorName || ''}`;
 }
 
 function formatDivisionRuleLabel(divisionName, ruleType, divisionId) {
@@ -42,6 +44,7 @@ function formatManufacturerLabel(manufacturer) {
 
 export default function ScopeOperationsReview({
   vendorIds = [],
+  vendors = [],
   productRules = {},
   version = null,
   adhocSubType = null,
@@ -115,9 +118,20 @@ export default function ScopeOperationsReview({
     return baseProducts;
   }, [version?.products, productRules.computedProductPreview, activeProductRules]);
 
-  const vendorLabels = (version?.vendors || [])
-    .filter((vendor) => vendorIds.includes(vendor.vendorId))
-    .map(formatVendorLabel);
+  const vendorLabels = useMemo(() => {
+    const combined = [...(vendors || []), ...(version?.vendors || [])];
+    const unique = [];
+    const seen = new Set();
+    for (const v of combined) {
+      if (!seen.has(v.vendorId)) {
+        seen.add(v.vendorId);
+        unique.push(v);
+      }
+    }
+    return unique
+      .filter((vendor) => vendorIds.includes(vendor.vendorId))
+      .map(formatVendorLabel);
+  }, [vendors, version?.vendors, vendorIds]);
 
   const manufacturerLabels = manufacturers.map(formatManufacturerLabel).filter(Boolean);
   const divisionLabels = divisionRules.map((rule) =>

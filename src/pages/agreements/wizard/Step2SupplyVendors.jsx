@@ -15,16 +15,17 @@ function toNumericId(id) {
 
 function normalizeVendor(item) {
   return {
-    id: toNumericId(item.vendorId ?? item.id),
-    vendorName: item.vendorName || '',
+    id: toNumericId(item.vendorId ?? item.id ?? item.accountId),
+    vendorName: item.vendorName || item.name || '',
     company: item.company,
+    state: item.state || item.company?.state || '',
   };
 }
 
 function formatVendorLabel(vendor) {
   if (!vendor) return '';
-  const stateCode = vendor.company?.state || 'NA';
-  return `${stateCode}-${vendor.vendorName} (ID: ${vendor.id})`;
+  const stateCode = vendor.state || vendor.company?.state || '';
+  return `${stateCode}${stateCode != '' ? '-' : ''}${vendor.vendorName} (ID: ${vendor.id})`;
 }
 
 export default function Step2SupplyVendors({
@@ -123,12 +124,21 @@ export default function Step2SupplyVendors({
       return undefined;
     }
 
+    let hasMissingState = false;
     if (selectedVendors.length > 0) {
       const hydrated = selectedVendors
         .map(normalizeVendor)
         .filter((vendor) => vendorIds.some((id) => toNumericId(id) === vendor.id));
-      setResolvedVendors(hydrated);
-      return undefined;
+        
+      hasMissingState = hydrated.some((v) => !v.state);
+      
+      if (!hasMissingState && hydrated.length === vendorIds.length) {
+        setResolvedVendors(hydrated);
+        return undefined;
+      } else {
+        // Show what we have while loading the full details
+        setResolvedVendors(hydrated);
+      }
     }
 
     let cancelled = false;
@@ -136,7 +146,11 @@ export default function Step2SupplyVendors({
       .then((response) => {
         if (cancelled) return;
         const items = Array.isArray(response.data) ? response.data : [];
-        setResolvedVendors(items.map(normalizeVendor));
+        const normalized = items.map(normalizeVendor);
+        setResolvedVendors(normalized);
+        if (hasMissingState || selectedVendors.length !== vendorIds.length) {
+          onVendorChange(normalized);
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -188,7 +202,7 @@ export default function Step2SupplyVendors({
               getOptionLabel={formatVendorLabel}
               renderOption={(vendor) => (
                 <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.25 }}>
-                  <Typography variant="body2">{vendor.company?.state || 'NA'}-{vendor.vendorName}</Typography>
+                  <Typography variant="body2">{vendor.state || vendor.company?.state || 'NA'}-{vendor.vendorName}</Typography>
                   <Typography variant="caption" color="text.secondary">
                     ID: {vendor.id}
                   </Typography>

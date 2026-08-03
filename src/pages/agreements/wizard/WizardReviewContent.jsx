@@ -377,6 +377,7 @@ export default function WizardReviewContent({
           <CollapsibleSection title="Scope & Operations" defaultExpanded sx={REVIEW_SECTION_SX}>
             <ScopeOperationsReview
               vendorIds={wizardState?.vendorIds ?? []}
+              vendors={wizardState?.vendors ?? []}
               productRules={productRules}
               version={version}
               adhocSubType={profile === 'AD_HOC' ? details.adhocSubType : null}

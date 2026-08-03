@@ -1129,11 +1129,6 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
   const handleStateSearch = useCallback(async (query) => {
     if (!isUnrestrictedGeo) return;
     const q = (query ?? '').trim();
-    if (q.length < LOCATION_SEARCH_MIN_CHARS) {
-      setStateOptions([]);
-      setStatesLoading(false);
-      return;
-    }
     setStatesLoading(true);
     try {
       const { data } = await integrationApi.searchStates(q);
@@ -1487,10 +1482,10 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
                     options={productOptions}
                     value={selectedProductIds}
                     onChange={setSelectedProductIds}
-                    allLabel="Type to search products"
+                    allLabel="Search products..."
                     emptyLabel="No matching products"
-                    requireSearch
-                    searchMinChars={1}
+                    requireSearch={false}
+                    searchMinChars={0}
                     disabled={productOptions.length === 0}
                   />
                 </Grid>
@@ -1500,10 +1495,10 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
                     options={supplierOptions}
                     value={selectedSupplierIds}
                     onChange={setSelectedSupplierIds}
-                    allLabel="Type to search suppliers"
+                    allLabel="Search suppliers..."
                     emptyLabel="No matching suppliers"
-                    requireSearch
-                    searchMinChars={1}
+                    requireSearch={false}
+                    searchMinChars={0}
                     disabled={supplierOptions.length === 0}
                   />
                 </Grid>
@@ -1513,12 +1508,12 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
                     options={stateSelectOptions}
                     value={selectedStateCodes}
                     onChange={handleStateSelectionChange}
-                    allLabel={isUnrestrictedGeo ? 'Search states…' : 'Type to search states'}
-                    emptyLabel={isUnrestrictedGeo ? 'Type to search states' : 'No matching states'}
+                    allLabel="Search states…"
+                    emptyLabel={isUnrestrictedGeo ? 'No states found' : 'No matching states'}
                     onSearch={isUnrestrictedGeo ? handleStateSearch : null}
                     loading={statesLoading}
-                    searchMinChars={isUnrestrictedGeo ? LOCATION_SEARCH_MIN_CHARS : 1}
-                    requireSearch={!isUnrestrictedGeo}
+                    searchMinChars={0}
+                    requireSearch={false}
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
@@ -1530,14 +1525,14 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
                     allLabel={
                       cityDisabledByDependency
                         ? 'Select a state first'
-                        : (isUnrestrictedGeo ? 'Search cities in selected states…' : 'Type to search cities')
+                        : 'Search cities…'
                     }
                     emptyLabel={citiesLoading ? 'Loading cities…' : 'No matching cities'}
                     disabled={cityDisabledByDependency}
                     onSearch={isUnrestrictedGeo && !cityDisabledByDependency ? handleCitySearch : null}
                     loading={citiesLoading}
-                    searchMinChars={isUnrestrictedGeo ? 0 : 1}
-                    requireSearch={!isUnrestrictedGeo}
+                    searchMinChars={0}
+                    requireSearch={false}
                   />
                 </Grid>
                 <Grid size={{ xs: 12 }} sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>

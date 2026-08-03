@@ -9,6 +9,8 @@ import {
   Breadcrumbs, Link as MuiLink, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Menu, IconButton, ListItemIcon
 } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
+import { integrationApi } from '../../api/integrationApi';
 import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext, AutoMode, Check, Close } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
@@ -131,6 +133,7 @@ export default function AgreementDetailPage({
   const submitModal = useModal();
   const [terminateData, setTerminateData] = useState({ comments: '', requestedTerminationDate: '' });
   const [slabs, setSlabs] = useState([]);
+  const [vendorDetails, setVendorDetails] = useState({});
 
   const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
   const actionsMenuOpen = Boolean(actionsMenuAnchor);
@@ -144,7 +147,26 @@ export default function AgreementDetailPage({
         axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_BY_ID(versionId)),
         axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_TIMELINE(versionId)),
       ]);
+      
       setAgreement(agrRes.data);
+      
+      // Fetch any missing vendor states
+      if (agrRes.data?.vendors) {
+        const vendorsMissingState = agrRes.data.vendors.filter(v => !v.state).map(v => v.vendorId);
+        if (vendorsMissingState.length > 0) {
+          integrationApi.getVendorsByIds(vendorsMissingState)
+            .then(vendorRes => {
+              const items = Array.isArray(vendorRes.data) ? vendorRes.data : [];
+              const detailsMap = {};
+              items.forEach(item => {
+                detailsMap[item.vendorId ?? item.id ?? item.accountId] = item.state || item.company?.state || '';
+              });
+              setVendorDetails(detailsMap);
+            })
+            .catch(err => console.error("Failed to fetch missing vendor details", err));
+        }
+      }
+      
       setTimeline(tlRes.data);
       return agrRes.data;
     } catch {
@@ -458,6 +480,33 @@ export default function AgreementDetailPage({
 
   if (loading) return <LoadingOverlay open />;
 
+  const vendorColumns = [
+    { field: 'vendorId', headerName: 'Vendor ID', width: 120 },
+    { field: 'vendorName', headerName: 'Vendor Name', flex: 1, minWidth: 200 },
+    { field: 'state', headerName: 'State', width: 100, renderCell: (params) => params.row.state || vendorDetails[params.row.vendorId] || '—' },
+  ];
+
+  const assetPayoutColumns = [
+    { field: 'periodMonths', headerName: 'Period', flex: 1, renderCell: (params) => `${params.row.periodMonths} Months` },
+    { field: 'payoutPerStore', headerName: 'Payout (per store)', flex: 1, renderCell: (params) => formatAssetMoney(params.row.payoutPerStore) },
+  ];
+
+  const slabColumns = [
+    { field: 'minCap', headerName: 'Min Cap', flex: 1, renderCell: (params) => formatCapValue(params.row.minCap, params.row.capUnit || agreement?.commercials?.slabCapUnit || CAP_UNIT.RUPEES) },
+    { field: 'maxCap', headerName: 'Max Cap', flex: 1, renderCell: (params) => formatCapValue(params.row.maxCap, params.row.capUnit || agreement?.commercials?.slabCapUnit || CAP_UNIT.RUPEES) },
+    { field: 'commercialValue', headerName: 'Payout', flex: 1, renderCell: (params) => formatCommercialValue(params.row.commercialValue, params.row.valueType) },
+    { field: 'payoutFrequency', headerName: 'Frequency', flex: 1, valueFormatter: (value) => payoutFrequencyLabel(value) },
+  ];
+
+  const productColumns = [
+    { field: 'productId', headerName: 'Product ID', width: 120, renderCell: (params) => (
+      <Chip label={params.value} size="small" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', bgcolor: 'grey.100', borderRadius: '6px' }} />
+    ) },
+    { field: 'productName', headerName: 'Product Name', flex: 1.5, minWidth: 200 },
+    { field: 'divisionName', headerName: 'Division', flex: 1, renderCell: (params) => params.row.divisionName || '—' },
+    { field: 'manufacturerName', headerName: 'Manufacturer', flex: 1, renderCell: (params) => params.row.manufacturerName || '—' },
+  ];
+
   return (
     <Box>
       {!embeddedAgreementId && (
@@ -705,10 +754,24 @@ export default function AgreementDetailPage({
                     </Grid>
                     {!isAssetRental && (
                       <Grid size={12}>
-                        <Divider sx={{ my: 1 }} />
-                        {agreement.vendors?.map((v) => (
-                          <Chip key={v.vendorId} label={v.vendorName} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
-                        ))}
+                        <Divider sx={{ my: 2 }} />
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Selected Vendors</Typography>
+                        <Box sx={{ maxWidth: 600, width: '100%' }}>
+                          <DataGrid
+                            rows={agreement.vendors || []}
+                            columns={vendorColumns}
+                            getRowId={(row) => row.vendorId}
+                            autoHeight
+                            initialState={{
+                              pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                            }}
+                            pageSizeOptions={[5, 10, 25]}
+                            disableColumnMenu
+                            unstable_headerFilters
+                            sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
+                            disableRowSelectionOnClick
+                          />
+                        </Box>
                       </Grid>
                     )}
                   </Grid>
@@ -751,7 +814,7 @@ export default function AgreementDetailPage({
                   {!isAssetRental && agreement.commercialStructure === 'FLAT' && (
                     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                       <Typography variant="caption" color="text.secondary">Commercial Value</Typography>
-                      <Typography variant="body2">₹{Number(agreement.commercialValue || 0).toLocaleString('en-IN')}</Typography>
+                      <Typography variant="body2">{formatCommercialValue(agreement.commercialValue, agreement.flatValueType)}</Typography>
                     </Grid>
                   )}
                 </Grid>
@@ -789,24 +852,21 @@ export default function AgreementDetailPage({
                         (!agreement.assetPayoutPeriods || agreement.assetPayoutPeriods.length === 0) ? (
                           <Typography variant="body2">—</Typography>
                         ) : (
-                          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, overflow: 'hidden' }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell sx={{ fontWeight: 600 }}>Period</TableCell>
-                                  <TableCell sx={{ fontWeight: 600 }}>Payout (per store)</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {agreement.assetPayoutPeriods.map((period, idx) => (
-                                  <TableRow key={idx}>
-                                    <TableCell>{period.periodMonths} Months</TableCell>
-                                    <TableCell>{formatAssetMoney(period.payoutPerStore)}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
+                          <Box sx={{ width: '100%' }}>
+                            <DataGrid
+                              rows={agreement.assetPayoutPeriods || []}
+                              columns={assetPayoutColumns}
+                              getRowId={(row) => row.id || row.periodMonths}
+                              autoHeight
+                              initialState={{
+                                pagination: { paginationModel: { pageSize: 5, page: 0 } },
+                              }}
+                              pageSizeOptions={[5, 10]}
+                              disableColumnMenu
+                              sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
+                              disableRowSelectionOnClick
+                            />
+                          </Box>
                         )
                       ) : (
                         <Typography variant="body2">{formatAssetMoney(agreement.asset?.flatPayout)}</Typography>
@@ -856,45 +916,21 @@ export default function AgreementDetailPage({
               {isAdHoc && isSlabStructure && (
                 <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
                   <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Details Structure</Typography>
-                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', mt: 1 }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>Min Cap</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Max Cap</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Payout</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Frequency</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {slabs.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4}>
-                              <Typography variant="body2" color="text.secondary">
-                                No commercial tiers added.
-                              </Typography>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          slabs.map((slab) => {
-                            const capUnit = slab.capUnit || agreement?.commercials?.slabCapUnit || CAP_UNIT.RUPEES;
-                            return (
-                              <TableRow key={slab.id}>
-                                <TableCell>{formatCapValue(slab.minCap, capUnit)}</TableCell>
-                                <TableCell>{formatCapValue(slab.maxCap, capUnit)}</TableCell>
-                                <TableCell>
-                                  {formatCommercialValue(slab.commercialValue, slab.valueType)}
-                                </TableCell>
-                                <TableCell>
-                                  {payoutFrequencyLabel(slab.payoutFrequency)}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
+                  <Box sx={{ width: '100%', mt: 1 }}>
+                    <DataGrid
+                      rows={slabs || []}
+                      columns={slabColumns}
+                      getRowId={(row) => row.id}
+                      autoHeight
+                      initialState={{
+                        pagination: { paginationModel: { pageSize: 5, page: 0 } },
+                      }}
+                      pageSizeOptions={[5, 10]}
+                      disableColumnMenu
+                      sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
+                      disableRowSelectionOnClick
+                    />
+                  </Box>
                 </Paper>
               )}
 
@@ -935,48 +971,22 @@ export default function AgreementDetailPage({
                   {!agreement.products || agreement.products.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">No products selected.</Typography>
                   ) : (
-                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '8px', overflow: 'hidden', maxHeight: 360 }}>
-                      <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 1.25, px: 2 } }}>
-                        <TableHead>
-                          <TableRow>
-                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '20%' }}>
-                              Product ID
-                            </TableCell>
-                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '35%' }}>
-                              Product Name
-                            </TableCell>
-                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '25%' }}>
-                              Division
-                            </TableCell>
-                            <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '20%' }}>
-                              Manufacturer
-                            </TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {agreement.products.map((p, idx) => (
-                            <TableRow key={p.productId || idx} hover>
-                              <TableCell>
-                                <Chip
-                                  label={p.productId}
-                                  size="small"
-                                  sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', bgcolor: 'grey.100', borderRadius: '6px' }}
-                                />
-                              </TableCell>
-                              <TableCell sx={{ fontWeight: 500, fontSize: '0.8125rem' }}>
-                                {p.productName}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: '0.8125rem' }}>
-                                {p.divisionName || '—'}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: '0.8125rem' }}>
-                                {p.manufacturerName || '—'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
+                    <Box sx={{ width: '100%', mt: 1 }}>
+                      <DataGrid
+                        rows={agreement.products || []}
+                        columns={productColumns}
+                        getRowId={(row) => row.productId || Math.random().toString()}
+                        autoHeight
+                        initialState={{
+                          pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                        }}
+                        pageSizeOptions={[10, 25, 50]}
+                        disableColumnMenu
+                        unstable_headerFilters
+                        sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
+                        disableRowSelectionOnClick
+                      />
+                    </Box>
                   )}
                 </Paper>
               )}

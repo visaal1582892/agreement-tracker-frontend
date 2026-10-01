@@ -17,7 +17,7 @@ export default function StoreMappingTable({
   onBulkDelete,
   deleting = false,
   loading = false,
-  maxHeight = 360,
+  maxHeight = 320,
   // Pagination & Search props
   page,
   rowsPerPage,
@@ -26,6 +26,8 @@ export default function StoreMappingTable({
   onRowsPerPageChange,
   search,
   onSearchChange,
+  readOnly = false,
+  title = '',
 }) {
   // Defensive helper to handle both Set and Array prop types safely
   const isRowSelected = (id) => {
@@ -55,7 +57,12 @@ export default function StoreMappingTable({
         px: 2.5, py: 1.5, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider',
         display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5
       }}>
-        {hasSearch ? (
+        {title && (
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary', flexGrow: 1 }}>
+            {title}
+          </Typography>
+        )}
+        {hasSearch && !readOnly ? (
           <TextField
             size="small"
             placeholder="Search by Store ID or Name..."
@@ -76,7 +83,7 @@ export default function StoreMappingTable({
           </Typography>
         )}
 
-        {selectable && (
+        {selectable && !readOnly && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Button
               size="small"
@@ -108,10 +115,10 @@ export default function StoreMappingTable({
 
       {/* Main Table Grid */}
       <TableContainer sx={{ maxHeight }}>
-        <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 1.25, px: 2 } }}>
+        <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, px: 1.5, fontSize: '0.8125rem' } }}>
           <TableHead>
             <TableRow>
-              {selectable && (
+              {selectable && !readOnly && (
                 <TableCell padding="checkbox" sx={{ bgcolor: 'grey.100', width: 48 }}>
                   <Checkbox
                     size="small"
@@ -129,12 +136,18 @@ export default function StoreMappingTable({
                 Name
               </TableCell>
               <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '15%' }}>
+                Country
+              </TableCell>
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '15%' }}>
                 State
               </TableCell>
               <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '15%' }}>
                 City
               </TableCell>
-              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '30%' }}>
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '10%' }}>
+                Pin Code
+              </TableCell>
+              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', width: '20%' }}>
                 Address
               </TableCell>
             </TableRow>
@@ -143,7 +156,7 @@ export default function StoreMappingTable({
           <TableBody>
             {stores.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={selectable ? 6 : 5} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={selectable && !readOnly ? 6 : 5} align="center" sx={{ py: 3 }}>
                   <Typography variant="body2" color="text.secondary">
                     {loading ? 'Loading mapped outlets...' : 'No outlets mapped'}
                   </Typography>
@@ -151,12 +164,14 @@ export default function StoreMappingTable({
               </TableRow>
             ) : (
               stores.map((store, index) => {
-                const rowId = store.mappingId || store.id || index;
+                const rowId = store.mappingId || store.id || store.storeId || index;
                 const isSelected = isRowSelected(rowId);
                 const displayStoreId = store.storeId || store.storeCode || store.code;
                 const displayName = store.storeName || store.name || 'N/A';
-                const displayState = store.state || 'N/A';
-                const displayCity = store.city || 'N/A';
+                const displayCountry = store.region1 || store.country || 'N/A';
+                const displayState = store.region2 || store.state || 'N/A';
+                const displayCity = store.region3 || store.city || 'N/A';
+                const displayPinCode = store.pinCode || 'N/A';
                 const displayAddress = store.address || 'N/A';
 
                 return (
@@ -166,7 +181,7 @@ export default function StoreMappingTable({
                     selected={isSelected}
                     sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
                   >
-                    {selectable && (
+                    {selectable && !readOnly && (
                       <TableCell padding="checkbox">
                         <Checkbox
                           size="small"
@@ -191,14 +206,38 @@ export default function StoreMappingTable({
 
                     {/* Store Name */}
                     <TableCell sx={{ maxWidth: 150 }}>
-                      <Tooltip title={displayName} placement="top-start">
-                        <Typography variant="body2" sx={{
-                          fontWeight: 500, fontSize: '0.8125rem', color: 'text.primary',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                        }}>
-                          {displayName}
-                        </Typography>
-                      </Tooltip>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Tooltip title={displayName} placement="top-start">
+                          <Typography variant="body2" sx={{
+                            fontWeight: 500, fontSize: '0.8125rem', color: 'text.primary',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                          }}>
+                            {displayName}
+                          </Typography>
+                        </Tooltip>
+                        {store.isCustom && (
+                          <Chip
+                            label="Custom"
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: '0.625rem',
+                              fontWeight: 700,
+                              bgcolor: 'primary.50',
+                              color: 'primary.main',
+                              border: '1px solid',
+                              borderColor: 'primary.200'
+                            }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+
+                    {/* Country */}
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                        {displayCountry}
+                      </Typography>
                     </TableCell>
 
                     {/* State */}
@@ -216,6 +255,13 @@ export default function StoreMappingTable({
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
                         {displayCity}
+                      </Typography>
+                    </TableCell>
+
+                    {/* Pin Code */}
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: '0.8125rem', fontFamily: 'monospace' }}>
+                        {displayPinCode}
                       </Typography>
                     </TableCell>
 

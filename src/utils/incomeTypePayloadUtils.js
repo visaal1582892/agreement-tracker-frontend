@@ -63,6 +63,7 @@ export function buildIncomeTypeSwitchUpdates(incomeTypes, previousDetails, nextD
       : GEOGRAPHY_MODE.MIXED;
     updates.details.partnerStates = [];
     updates.details.partnerCities = [];
+    updates.details.locations = [];
   }
   if (nextProfile === 'AD_HOC' || prevProfile === 'AD_HOC') {
     updates.resetCommercials = true;

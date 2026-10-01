@@ -20,7 +20,7 @@ import { useSnackbar } from 'notistack';
 import { normalizePageResponse } from '../../utils/pageResponse';
 import { GroupDeleteDialogs, useGroupDeletion } from '../../hooks/useGroupDeletion';
 
-const PAGE_TAB = { GROUPS: 'GROUPS', AGREEMENTS: 'AGREEMENTS' };
+const PAGE_TAB = { GROUPS: 'GROUPS', AGREEMENTS: 'AGREEMENTS', DRAFTS: 'DRAFTS' };
 const FETCH_MODE = { MY: 'MY', ALL: 'ALL' };
 
 function buildAgreementQueryParams({ page, rowsPerPage, sortBy, sortDir, scope, filters }) {
@@ -59,14 +59,17 @@ export default function AgreementListPage() {
   const { enqueueSnackbar } = useSnackbar();
   const { hasRight } = useAuth();
 
-  const canViewMy = hasRight(RIGHTS.AGREEMENT_VIEW);
-  const canViewAll = hasRight(RIGHTS.AGREEMENT_VIEW_ALL);
+  const canViewMy = hasRight(RIGHTS.AGREEMENT_VIEW_MY) || hasRight(RIGHTS.DRAFT_VIEW_MY);
+  const canViewAll = hasRight(RIGHTS.AGREEMENT_VIEW_ALL) || hasRight(RIGHTS.DRAFT_VIEW_ALL);
+  const canViewAllDrafts = hasRight(RIGHTS.DRAFT_VIEW_ALL);
   const showScopeToggle = canViewMy && canViewAll;
   const defaultScope = canViewMy ? FETCH_MODE.MY : FETCH_MODE.ALL;
 
   const pageTab = location.pathname.endsWith('/list')
     ? PAGE_TAB.AGREEMENTS
-    : PAGE_TAB.GROUPS;
+    : location.pathname.endsWith('/drafts')
+      ? PAGE_TAB.DRAFTS
+      : PAGE_TAB.GROUPS;
   const [fetchMode, setFetchMode] = useState(defaultScope);
   const [agreementFilters, setAgreementFilters] = useState({});
   const [groupFilters, setGroupFilters] = useState({ isActive: 'true' });
@@ -74,6 +77,17 @@ export default function AgreementListPage() {
   const [groups, setGroups] = useState([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupsLoading, setGroupsLoading] = useState(false);
+
+  const [drafts, setDrafts] = useState([]);
+  const [draftsTotal, setDraftsTotal] = useState(0);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftFilters, setDraftFilters] = useState({});
+  const draftTable = useDataTable();
+  const debouncedDraftFilters = useDebounce(draftFilters, 600);
+  const draftFilterKey = useMemo(
+    () => JSON.stringify(debouncedDraftFilters),
+    [debouncedDraftFilters],
+  );
 
   const { agreements, totalElements, loading } = useSelector((s) => s.agreements);
   const agreementTable = useDataTable();
@@ -143,6 +157,37 @@ export default function AgreementListPage() {
     enqueueSnackbar,
   ]);
 
+  const loadDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    try {
+      const filters = JSON.parse(draftFilterKey);
+      const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENTS, {
+        params: buildAgreementQueryParams({
+          page: draftTable.page,
+          rowsPerPage: draftTable.rowsPerPage,
+          sortBy: draftTable.sortBy,
+          sortDir: draftTable.sortDir,
+          scope: canViewAllDrafts ? 'ALL' : 'MY',
+          filters: { ...filters, status: 'DRAFT' },
+        }),
+      });
+      const normalized = normalizePageResponse(data);
+      setDrafts(normalized.content);
+      setDraftsTotal(normalized.totalElements);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to load drafts', { variant: 'error' });
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, [
+    draftFilterKey,
+    draftTable.page,
+    draftTable.rowsPerPage,
+    draftTable.sortBy,
+    draftTable.sortDir,
+    enqueueSnackbar,
+  ]);
+
   const groupDeletion = useGroupDeletion({
     onSuccess: (message) => {
       enqueueSnackbar(message, { variant: 'success' });
@@ -167,8 +212,15 @@ export default function AgreementListPage() {
     loadGroups();
   }, [pageTab, loadGroups]);
 
+  useEffect(() => {
+    if (pageTab !== PAGE_TAB.DRAFTS) return;
+    loadDrafts();
+  }, [pageTab, loadDrafts]);
+
   const handlePageTabChange = (_, value) => {
-    navigate(value === PAGE_TAB.GROUPS ? ROUTES.AGREEMENTS_GROUPS : ROUTES.AGREEMENTS_LIST);
+    if (value === PAGE_TAB.GROUPS) navigate(ROUTES.AGREEMENTS_GROUPS);
+    else if (value === PAGE_TAB.DRAFTS) navigate(ROUTES.AGREEMENTS_DRAFTS);
+    else navigate(ROUTES.AGREEMENTS_LIST);
   };
 
   const handleScopeChange = (_, value) => {
@@ -197,6 +249,18 @@ export default function AgreementListPage() {
     groupTable.handlePageChange(null, 0);
   }, [groupTable]);
 
+  const handleDraftFilterChange = useCallback((key, value) => {
+    // Don't allow changing status filter on drafts page - it's always DRAFT
+    if (key === 'status') return;
+    setDraftFilters((prev) => {
+      const next = { ...prev };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+    draftTable.handlePageChange(null, 0);
+  }, [draftTable]);
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -224,6 +288,7 @@ export default function AgreementListPage() {
         }}
       >
         <Tab label="All Agreements" value={PAGE_TAB.AGREEMENTS} />
+        {(canViewMy || canViewAllDrafts) && <Tab label="Drafts" value={PAGE_TAB.DRAFTS} />}
         <Tab label="Agreement Groups" value={PAGE_TAB.GROUPS} />
       </Tabs>
 
@@ -248,6 +313,36 @@ export default function AgreementListPage() {
             onFilterChange={handleGroupFilterChange}
             onDelete={handleDeleteGroup}
           />
+        </>
+      ) : (pageTab === PAGE_TAB.DRAFTS && (canViewMy || canViewAllDrafts)) ? (
+        <>
+          <PageHeader
+            title="Drafts"
+            subtitle={canViewAllDrafts ? "All unsubmitted agreements" : "Draft agreements you own"}
+          />
+          <AgreementsTable
+            rows={drafts}
+            loading={draftsLoading}
+            totalCount={draftsTotal}
+            page={draftTable.page}
+            rowsPerPage={draftTable.rowsPerPage}
+            onPageChange={draftTable.handlePageChange}
+            onRowsPerPageChange={draftTable.handleRowsPerPageChange}
+            sortBy={draftTable.sortBy}
+            sortDir={draftTable.sortDir}
+            onSort={draftTable.handleSort}
+            filters={draftFilters}
+            onFilterChange={handleDraftFilterChange}
+            onRefresh={loadDrafts}
+            emptyMessage="No drafts found."
+          />
+          {!draftsLoading && drafts.length > 0 && (
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Typography variant="caption" color="text.secondary">
+                Showing {drafts.length} of {draftsTotal} drafts
+              </Typography>
+            </Box>
+          )}
         </>
       ) : (
         <>

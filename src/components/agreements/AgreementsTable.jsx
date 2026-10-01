@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Box, Chip, IconButton, Menu, MenuItem, Tooltip } from '@mui/material';
-import { MoreVert } from '@mui/icons-material';
+import { MoreVert, DeleteOutlined } from '@mui/icons-material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useSnackbar } from 'notistack';
@@ -52,10 +52,45 @@ function RowActionsMenu({
   const [anchor, setAnchor] = useState(null);
   const submitModal = useModal();
   const deleteModal = useModal();
+  const { enqueueSnackbar } = useSnackbar();
+  const [initializing, setInitializing] = useState(false);
   const { getListRowActions } = useAgreementPermissions();
   const actions = getListRowActions(rowToAgreement(row));
 
+  if (row.approvalStatus !== 'DRAFT') return null;
   if (!Object.values(actions).some(Boolean)) return null;
+
+  if (row.approvalStatus === 'DRAFT') {
+    return (
+      <>
+        <Tooltip title="Delete Draft">
+          <IconButton
+            size="small"
+            color="error"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              deleteModal.open();
+            }}
+          >
+            <DeleteOutlined fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <ConfirmDialog
+          open={deleteModal.isOpen}
+          onClose={deleteModal.close}
+          onConfirm={() => {
+            deleteModal.close();
+            window.setTimeout(() => onDelete(row), 0);
+          }}
+          title="Delete Draft Agreement"
+          message="This will permanently delete this draft and all associated data. This action cannot be undone."
+          confirmLabel="Delete"
+          danger
+        />
+      </>
+    );
+  }
 
   const incomplete = isIncompleteDraft(row);
 
@@ -80,17 +115,36 @@ function RowActionsMenu({
     if (path) navigate(path);
   };
 
-  const goToEdit = () => {
-    if (row.approvalStatus === 'DRAFT') {
-      const path = buildDraftEditPath(row, {
-        mode: draftEditMode,
-        step: incomplete ? 2 : undefined,
-      });
-      if (path) navigate(path);
-      return;
-    }
-    const path = buildAgreementEditPath(row.latestVersionId, incomplete ? { step: 2 } : {});
+  const goToEditDraft = () => {
+    const path = buildDraftEditPath(row, {
+      mode: draftEditMode,
+      step: incomplete ? 2 : undefined,
+    });
     if (path) navigate(path);
+  };
+
+  const handleEditApproved = async () => {
+    try {
+      setInitializing(true);
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_INIT_EDIT(row.latestVersionId));
+      navigate(buildAgreementEditPath(data.id, { step: 1 }));
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to initialize edit', { variant: 'error' });
+    } finally {
+      setInitializing(false);
+    }
+  };
+
+  const handleRevise = async () => {
+    try {
+      setInitializing(true);
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_INIT_REVISE(row.latestVersionId));
+      navigate(buildAgreementEditPath(data.id, { step: 1 }));
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to initialize revise', { variant: 'error' });
+    } finally {
+      setInitializing(false);
+    }
   };
 
   const handleSubmitClick = () => {
@@ -141,12 +195,18 @@ function RowActionsMenu({
           <MenuItem dense onClick={withStopPropagation(goToDetail)}>View</MenuItem>
         )}
         {row.approvalStatus === 'DRAFT' && (actions.editDraft || actions.view) && (
-          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit Draft</MenuItem>
+          <MenuItem dense onClick={withStopPropagation(goToEditDraft)}>Edit Draft</MenuItem>
         )}
         {actions.editApproved && row.computedStatus !== 'TERMINATED' && (
-          <MenuItem dense onClick={withStopPropagation(goToEdit)}>Edit</MenuItem>
+          <MenuItem dense disabled={initializing} onClick={withStopPropagation(handleEditApproved)}>
+            {initializing ? 'Initializing...' : 'Edit'}
+          </MenuItem>
         )}
-        {actions.revise && <MenuItem dense onClick={withStopPropagation(goToEdit)}>Revise & Resubmit</MenuItem>}
+        {actions.revise && (
+          <MenuItem dense disabled={initializing} onClick={withStopPropagation(handleRevise)}>
+            {initializing ? 'Initializing...' : 'Revise & Resubmit'}
+          </MenuItem>
+        )}
         {actions.submit && <MenuItem dense onClick={withStopPropagation(handleSubmitClick)}>Submit for Approval</MenuItem>}
         {actions.transfer && <MenuItem dense onClick={withStopPropagation(handleTransferClick)}>Transfer Ownership</MenuItem>}
         {row.approvalStatus === 'DRAFT' && (
@@ -184,137 +244,137 @@ const buildColumns = ({
   loadingIncomeTypes,
   hideGroupColumn,
 }) => [
-  {
-    field: 'agreementName',
-    header: 'Agreement Name',
-    minWidth: 180,
-    sortable: true,
-    filterType: 'text',
-    filterKey: 'agreementName',
-    render: (v) => v || '—',
-  },
-  {
-    field: 'agreementGroupName',
-    header: 'Agreement Group',
-    minWidth: 180,
-    sortable: false,
-    ...(hideGroupColumn ? { filterType: null } : {
+    {
+      field: 'agreementName',
+      header: 'Agreement Name',
+      minWidth: 180,
+      maxWidth: 250,
+      sortable: true,
       filterType: 'text',
-      filterKey: 'agreementGroupName',
-    }),
-    render: (v) => v || '—',
-  },
-  {
-    field: 'vendors',
-    header: 'Vendors',
-    minWidth: 220,
-    sortable: false,
-    filterType: 'searchable-select',
-    filterKey: 'vendorId',
-    filterOptions: vendorOptions,
-    onFilterSearch: onVendorSearch,
-    filterLoading: loadingVendors,
-    getOptionLabel: (o) => o?.vendorName || '',
-    render: (vendors) => {
-      if (!vendors?.length) return '—';
-      const [first, ...rest] = vendors;
-      const allNames = vendors.map((v) => v.vendorName).join(', ');
-
-      const content = (
-        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
-          <span>{first.vendorName}</span>
-          {rest.length > 0 && (
-            <Chip
-              label={`+${rest.length}`}
-              size="small"
-              sx={{ fontSize: '0.7rem', height: 18, flexShrink: 0 }}
-            />
-          )}
-        </Box>
-      );
-
-      if (rest.length === 0) return content;
-
-      return (
-        <Tooltip title={allNames} arrow placement="top">
-          <Box component="span" sx={{ display: 'inline-flex' }}>
-            {content}
-          </Box>
-        </Tooltip>
-      );
+      filterKey: 'agreementName',
     },
-  },
-  {
-    field: 'incomeTypeName',
-    header: 'Income Type',
-    minWidth: 120,
-    sortable: false,
-    filterType: 'searchable-select',
-    filterKey: 'incomeTypeId',
-    filterOptions: incomeTypeOptions,
-    onFilterSearch: onIncomeTypeSearch,
-    filterLoading: loadingIncomeTypes,
-    getOptionLabel: (o) => o?.name || '',
-    render: (v) => v || '—',
-  },
-  {
-    field: 'startDate',
-    header: 'Start Date',
-    minWidth: 130,
-    sortable: false,
-    filterType: 'date-range-picker',
-    filterKeyFrom: 'startDateFrom',
-    filterKeyTo: 'startDateTo',
-    render: (v) => formatDate(v),
-  },
-  {
-    field: 'expiryDate',
-    header: 'End Date',
-    minWidth: 130,
-    sortable: false,
-    filterType: 'date-range-picker',
-    filterKeyFrom: 'endDateFrom',
-    filterKeyTo: 'endDateTo',
-    render: (v) => formatDate(v),
-  },
-  {
-    field: 'currentVersionNumber',
-    header: 'Version',
-    minWidth: 72,
-    sortable: false,
-    truncate: false,
-    render: (v) => `V${v || 1}`,
-  },
-  {
-    field: 'ownerName',
-    header: 'Owner',
-    minWidth: 130,
-    sortable: false,
-    filterType: 'text',
-    filterKey: 'ownerName',
-    render: (v) => v || '—',
-  },
-  {
-    field: 'updatedAt',
-    header: 'Last Updated',
-    minWidth: 120,
-    sortable: false,
-    render: (v) => formatUpdatedAt(v),
-  },
-  {
-    field: 'computedStatus',
-    header: 'Status',
-    width: 140,
-    minWidth: 140,
-    sortable: false,
-    truncate: false,
-    stickyRight: true,
-    filterType: 'select',
-    filterKey: 'status',
-    filterOptions: STATUS_FILTER_OPTIONS,
-    render: (v) => <StatusBadge status={v || 'DRAFT'} />,
-  },
-];
+    {
+      field: 'agreementGroupName',
+      header: 'Agreement Group',
+      minWidth: 180,
+      maxWidth: 250,
+      sortable: false,
+      ...(hideGroupColumn ? { filterType: null } : {
+        filterType: 'text',
+        filterKey: 'agreementGroupName',
+      }),
+    },
+    {
+      field: 'vendors',
+      header: 'Vendors',
+      minWidth: 220,
+      sortable: false,
+      filterType: 'searchable-select',
+      filterKey: 'vendorId',
+      filterOptions: vendorOptions,
+      onFilterSearch: onVendorSearch,
+      filterLoading: loadingVendors,
+      getOptionLabel: (o) => o?.vendorName || '',
+      render: (vendors) => {
+        if (!vendors?.length) return '—';
+        const [first, ...rest] = vendors;
+        const allNames = vendors.map((v) => v.vendorName).join(', ');
+
+        const content = (
+          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
+            <span>{first.vendorName}</span>
+            {rest.length > 0 && (
+              <Chip
+                label={`+${rest.length}`}
+                size="small"
+                sx={{ fontSize: '0.7rem', height: 18, flexShrink: 0 }}
+              />
+            )}
+          </Box>
+        );
+
+        if (rest.length === 0) return content;
+
+        return (
+          <Tooltip title={allNames} arrow placement="top">
+            <Box component="span" sx={{ display: 'inline-flex' }}>
+              {content}
+            </Box>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      field: 'incomeTypeName',
+      header: 'Income Type',
+      minWidth: 120,
+      maxWidth: 160,
+      sortable: false,
+      filterType: 'searchable-select',
+      filterKey: 'incomeTypeId',
+      filterOptions: incomeTypeOptions,
+      onFilterSearch: onIncomeTypeSearch,
+      filterLoading: loadingIncomeTypes,
+      getOptionLabel: (o) => o?.name || '',
+    },
+    {
+      field: 'startDate',
+      header: 'Start Date',
+      minWidth: 130,
+      sortable: false,
+      filterType: 'date-range-picker',
+      filterKeyFrom: 'startDateFrom',
+      filterKeyTo: 'startDateTo',
+      render: (v) => formatDate(v),
+    },
+    {
+      field: 'expiryDate',
+      header: 'End Date',
+      minWidth: 130,
+      sortable: false,
+      filterType: 'date-range-picker',
+      filterKeyFrom: 'endDateFrom',
+      filterKeyTo: 'endDateTo',
+      render: (v) => formatDate(v),
+    },
+    {
+      field: 'currentVersionNumber',
+      header: 'Version',
+      minWidth: 72,
+      sortable: false,
+      truncate: false,
+      render: (v) => `V${v || 1}`,
+    },
+    {
+      field: 'ownerName',
+      header: 'Owner',
+      minWidth: 130,
+      maxWidth: 160,
+      sortable: false,
+      filterType: 'text',
+      filterKey: 'ownerName',
+    },
+    {
+      field: 'updatedAt',
+      header: 'Last Updated',
+      minWidth: 120,
+      sortable: false,
+      render: (v) => formatUpdatedAt(v),
+    },
+    {
+      field: 'computedStatus',
+      header: 'Status',
+      width: 140,
+      minWidth: 140,
+      sortable: false,
+      truncate: false,
+      stickyRight: true,
+      filterType: 'select',
+      filterKey: 'status',
+      filterOptions: STATUS_FILTER_OPTIONS,
+      render: (v) => <StatusBadge status={v || 'DRAFT'} />,
+    },
+  ];
 
 export default function AgreementsTable({
   rows,
@@ -399,7 +459,7 @@ export default function AgreementsTable({
 
   const handleDelete = useCallback(async (row) => {
     try {
-      await axiosInstance.delete(ENDPOINTS.AGREEMENT_DELETE(row.id));
+      await axiosInstance.delete(ENDPOINTS.AGREEMENT_VERSION_DISCARD(row.latestVersionId));
       enqueueSnackbar('Draft agreement deleted', { variant: 'success' });
       onRefresh?.();
     } catch (err) {
@@ -453,8 +513,21 @@ export default function AgreementsTable({
     },
   ], [columns, navigate, handleSubmit, handleDelete, draftEditMode]);
 
-  const handleRowClick = onRowClickProp
-    ?? ((row) => navigateToAgreement(row, navigate, { mode: draftEditMode }));
+  const handleRowClick = (row) => {
+    if (row.approvalStatus === 'DRAFT') {
+      const path = buildDraftEditPath({ ...row, id: row.latestVersionId }, {
+        mode: draftEditMode,
+        step: 1,
+      });
+      if (path) navigate(path);
+      return;
+    }
+    if (onRowClickProp) {
+      onRowClickProp(row);
+    } else {
+      navigateToAgreement(row, navigate, { mode: draftEditMode });
+    }
+  };
 
   return (
     <>

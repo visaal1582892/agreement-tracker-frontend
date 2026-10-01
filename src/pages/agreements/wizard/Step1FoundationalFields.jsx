@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Grid, FormControl, InputLabel, Select, MenuItem, TextField,
+  Grid, FormControl, InputLabel, Select, MenuItem, TextField, Alert, Typography
 } from '@mui/material';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
@@ -29,6 +29,8 @@ export default function Step1FoundationalFields({
   agreement,
   onUpdateDetails,
   identityLocked = false,
+  incomeTypeLocked = false,
+  datesLocked = false,
   minStartDate = null,
   fieldErrors = {},
   onClearFieldError,
@@ -70,7 +72,7 @@ export default function Step1FoundationalFields({
                 value={resolveSelectValue(details.incomeTypeId, incomeTypes)}
                 label="Income Type *"
                 onChange={(e) => handleIncomeTypeChange(e.target.value)}
-                disabled={identityLocked}
+                disabled={identityLocked || incomeTypeLocked}
               >
                 {incomeTypes.map((type) => (
                   <MenuItem key={type.id} value={type.id}>{getIncomeTypeDisplayName(type.name)}</MenuItem>
@@ -100,6 +102,16 @@ export default function Step1FoundationalFields({
         title="Duration & Notes"
         description="Contract dates and tenure drive commercial frequency options in Step 3."
       >
+        {datesLocked && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            Dates cannot be changed during an edit. To extend the agreement, use the Renew action.
+          </Typography>
+        )}
+        {fieldErrors.startDate?.startsWith('Start date must be on or after') && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {fieldErrors.startDate}
+          </Alert>
+        )}
         <Grid container spacing={3}>
           <Grid size={12}>
             <DateRangeFields
@@ -110,8 +122,9 @@ export default function Step1FoundationalFields({
                 if (fields.startDate !== undefined) onClearFieldError?.('startDate');
                 if (fields.expiryDate !== undefined) onClearFieldError?.('expiryDate');
               }}
+              disabled={datesLocked}
               minStartDate={minStartDate}
-              startDateError={fieldErrors.startDate}
+              startDateError={fieldErrors.startDate?.startsWith('Start date must be on or after') ? null : fieldErrors.startDate}
               expiryDateError={fieldErrors.expiryDate}
             />
           </Grid>

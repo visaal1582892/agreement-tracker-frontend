@@ -5,7 +5,7 @@ import { downloadBlob, extractApiErrorMessage } from './commercialApi';
 export { downloadBlob, extractApiErrorMessage };
 
 export async function fetchStoreMappings(agreementVersionId, params) {
-  const defaultParams = { page: 0, size: 100000 };
+  const defaultParams = { page: 0, size: 500 };
   const useRawPage = !!params;
   const { data } = await axiosInstance.get(
     ENDPOINTS.STORE_MAPPINGS(agreementVersionId),
@@ -22,19 +22,13 @@ export async function downloadStoreMappingTemplate(agreementVersionId) {
   return data;
 }
 
-export async function uploadStoreMappings(agreementVersionId, file) {
+export async function parseStoreMappingsStateless(agreementVersionId, file) {
   const formData = new FormData();
   formData.append('file', file);
   const { data } = await axiosInstance.post(
-    ENDPOINTS.STORE_MAPPING_UPLOAD(agreementVersionId),
+    ENDPOINTS.STORE_MAPPING_PARSE_STATELESS(agreementVersionId),
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   );
   return data;
-}
-
-export async function deleteStoreMappings(agreementVersionId, mappingIds) {
-  await axiosInstance.delete(ENDPOINTS.STORE_MAPPINGS(agreementVersionId), {
-    data: { mappingIds },
-  });
 }

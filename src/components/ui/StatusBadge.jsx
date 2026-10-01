@@ -8,6 +8,7 @@ const STATUS_CONFIG = {
   COMPLETED:        { label: 'Completed',         bg: '#F1F5F9', color: '#64748B', dot: '#94A3B8' },
   INACTIVE:         { label: 'Inactive',          bg: '#F1F5F9', color: '#64748B', dot: '#94A3B8' },
   SUPERSEDED:       { label: 'Superseded',        bg: '#F1F5F9', color: '#94A3B8', dot: '#CBD5E1' },
+  EDITED:           { label: 'Edited',            bg: '#F1F5F9', color: '#94A3B8', dot: '#CBD5E1' },
   ACTIVE:           { label: 'Active',           bg: '#DCFCE7', color: '#15803D', dot: '#22C55E' },
   EXPIRED:          { label: 'Expired',           bg: '#FEE2E2', color: '#B91C1C', dot: '#EF4444' },
   TERMINATED:       { label: 'Terminated',        bg: '#374151', color: '#F3F4F6', dot: '#1F2937' },

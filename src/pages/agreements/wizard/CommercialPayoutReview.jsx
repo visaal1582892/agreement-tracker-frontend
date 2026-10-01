@@ -36,7 +36,12 @@ import { useSnackbar } from 'notistack';
 import dayjs from 'dayjs';
 import { BRAND } from '../../../config/theme';
 import KpiCard from '../../../components/ui/KpiCard';
-import { calculateCommercialPayouts, aggregatePurchases, extractApiErrorMessage } from '../../../api/commercialApi';
+import { DataGrid } from '@mui/x-data-grid';
+import {
+  calculateCommercialPayouts,
+  aggregatePurchases,
+  extractApiErrorMessage,
+} from '../../../api/commercialApi';
 import {
   isAdHocIncomeType,
   isAssetRentalIncomeType,
@@ -52,7 +57,7 @@ import { toMuiTextFieldSlotProps } from '../../../utils/muiDomCompat';
 
 const FILTER_OPTION_LIMIT = 50;
 const FILTER_SEARCH_DEBOUNCE_MS = 300;
-const LOCATION_SEARCH_MIN_CHARS = 2;
+
 const MONTH_INITIALS = Object.freeze([
   '', 'J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D',
 ]);
@@ -248,6 +253,7 @@ function FilterAutocomplete({
           </li>
         );
       }}
+      // Render tags custom logic
       renderTags={(tagValue, getTagProps) => {
         if (!tagValue.length) return null;
         if (tagValue.length <= 2) {
@@ -708,12 +714,21 @@ function StatusChips({ qualifierMet, capped, statusReason }) {
       />
     );
   }
+  if (statusReason === 'Target Missed') {
+    return (
+      <Chip
+        icon={<BlockOutlined sx={{ fontSize: 16 }} />}
+        label="Target not met"
+        size="small"
+        color="error"
+        variant="outlined"
+      />
+    );
+  }
   if (!qualifierMet) {
-    const label = statusReason === 'Target Missed'
-      ? 'Target not met'
-      : statusReason === 'Qualifier Missed'
-        ? 'Qualifier not met'
-        : statusReason || 'Qualifier not met';
+    const label = statusReason === 'Qualifier Missed'
+      ? 'Qualifier not met'
+      : statusReason || 'Qualifier not met';
     return (
       <Chip
         icon={<BlockOutlined sx={{ fontSize: 16 }} />}
@@ -852,48 +867,7 @@ function PayoutBreakdownTable({ items, showQualifierColumns = false }) {
   );
 }
 
-function PayableSummaryTable({ items }) {
-  return (
-    <TableContainer>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Period</TableCell>
-            <TableCell>Type</TableCell>
-            <TableCell align="right">Payout</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {items.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  No payable periods match the selected year/month filters.
-                </Typography>
-              </TableCell>
-            </TableRow>
-          ) : (
-            items.map((item, index) => (
-              <TableRow key={`payable-${item.timePeriodId ?? item.label}-${index}`}>
-                <TableCell>
-                  <Typography variant="body2" fontWeight={600}>{item.label}</Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {PERIOD_GROUP_LABELS[item.periodFrequency] || item.periodFrequency || '—'}
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Typography variant="body2" fontWeight={700}>{formatCurrency(item.payout)}</Typography>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  );
-}
+
 
 export default function CommercialPayoutReview({ agreementVersionId, version }) {
   const { enqueueSnackbar } = useSnackbar();
@@ -920,7 +894,8 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
   );
   const isUnrestrictedGeo = isDataFeeVersion
     || isAssetVersion
-    || version?.geographyMode === GEOGRAPHY_MODE.ALL;
+    || version?.geographyMode === GEOGRAPHY_MODE.ALL
+    || (Array.isArray(version?.partnerStates) && version.partnerStates.some((s) => s.code === 'IN'));
   const structureType = resolveStructureType(version?.commercialStructure);
   const isFlatStructure = structureType === STRUCTURE_TYPE.FLAT;
   const usesFrequencyPeriodBuckets = isDataFeeVersion || (isCommercialContractsVersion && isFlatStructure);
@@ -936,12 +911,11 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
   const [selectedSupplierIds, setSelectedSupplierIds] = useState([]);
   const [selectedStateCodes, setSelectedStateCodes] = useState([]);
   const [selectedCityCodes, setSelectedCityCodes] = useState([]);
-  const [summaryYears, setSummaryYears] = useState([]);
-  const [summaryMonths, setSummaryMonths] = useState([]);
+
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState(null);
+
   const [exploratoryAggregation, setExploratoryAggregation] = useState(null);
-  const autoCalcKeyRef = useRef(null);
   const citySearchQueryRef = useRef('');
   const [selectedStateMeta, setSelectedStateMeta] = useState(() => new Map());
   const [selectedCityMeta, setSelectedCityMeta] = useState(() => new Map());
@@ -996,26 +970,7 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
     version?.expiryDate,
   ]);
 
-  const summaryYearOptions = useMemo(() => {
-    const years = [...new Set(agreementMonthOptions.map((option) => option.year))].sort((a, b) => a - b);
-    return years.map((year) => ({ id: year, label: String(year) }));
-  }, [agreementMonthOptions]);
 
-  const summaryMonthOptions = useMemo(() => {
-    const months = agreementMonthOptions.filter((option) => (
-      summaryYears.length === 0 || summaryYears.includes(option.year)
-    ));
-    const unique = new Map();
-    months.forEach((option) => {
-      if (!unique.has(option.month)) {
-        unique.set(option.month, {
-          id: option.month,
-          label: dayjs().month(option.month - 1).format('MMM'),
-        });
-      }
-    });
-    return [...unique.values()].sort((a, b) => a.id - b.id);
-  }, [agreementMonthOptions, summaryYears]);
 
   const productOptions = useMemo(
     () => (version?.products ?? []).map((product) => ({
@@ -1093,7 +1048,6 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
   // CC: scoped agreement locations. Data Fee / ALL: integration APIs (no master preload).
   useEffect(() => {
     let cancelled = false;
-    autoCalcKeyRef.current = null;
 
     if (isUnrestrictedGeo) {
       // States/cities come from integration search APIs on demand — no preload.
@@ -1271,8 +1225,9 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
       ? null
       : (explorPeriods.length ? explorPeriods : fullPayoutPeriods);
 
+    const cleanStateCodes = activeStateCodes.includes('ALL') ? [] : activeStateCodes;
     const geo = applyCityOverStatePrecedence(
-      activeStateCodes,
+      cleanStateCodes,
       activeCityCodes,
       citySelectOptions,
     );
@@ -1301,8 +1256,7 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
         setResult(payoutData);
         setExploratoryAggregation(explorData);
       }
-      setSummaryYears([]);
-      setSummaryMonths([]);
+
     } catch (err) {
       setResult(null);
       setExploratoryAggregation(null);
@@ -1349,21 +1303,7 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
     });
   }, [handleCalculate]);
 
-  // Auto-calculate once after geo ready for this version (empty filters = full scope).
-  useEffect(() => {
-    if (!geoReady || !agreementVersionId) return;
-    if (!isAssetVersion && !fullPayoutPeriods.length) return;
-    const key = `${agreementVersionId}:${isAssetVersion ? 'asset' : fullPayoutPeriods.length}`;
-    if (autoCalcKeyRef.current === key) return;
-    autoCalcKeyRef.current = key;
-    handleCalculate();
-  }, [
-    geoReady,
-    agreementVersionId,
-    fullPayoutPeriods.length,
-    handleCalculate,
-    isAssetVersion,
-  ]);
+
 
   const lineItems = result?.lineItems ?? [];
   const rawAggregation = exploratoryAggregation;
@@ -1371,34 +1311,7 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
     || result?.incomeType === 'Commercial Contracts';
   const groupedLineItems = useMemo(() => groupLineItemsByPeriodType(lineItems), [lineItems]);
 
-  const payableItems = useMemo(() => {
-    const withPayout = lineItems.filter((item) => Number(item.payout) > 0);
-    if (!summaryYears.length && !summaryMonths.length) {
-      return withPayout;
-    }
 
-    const selectedKeys = new Set(
-      agreementMonthOptions
-        .filter((option) => (
-          (summaryYears.length === 0 || summaryYears.includes(option.year))
-          && (summaryMonths.length === 0 || summaryMonths.includes(option.month))
-        ))
-        .map((option) => option.periodKey),
-    );
-
-    return withPayout.filter((item) => {
-      const keys = item.periodMonthKeys ?? [];
-      if (!keys.length) {
-        return true;
-      }
-      return keys.some((key) => selectedKeys.has(key));
-    });
-  }, [lineItems, summaryYears, summaryMonths, agreementMonthOptions]);
-
-  const payableTotal = useMemo(
-    () => payableItems.reduce((sum, item) => sum + Number(item.payout || 0), 0),
-    [payableItems],
-  );
 
   const noPeriodOptions = usesFrequencyPeriodBuckets
     ? frequencyPeriodOptions.length === 0
@@ -1460,7 +1373,7 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
                 No contract months available. Set start and expiry dates on the agreement.
               </Alert>
             ) : (
-              <Grid container spacing={2} alignItems="flex-start">
+              <Grid container spacing={2} sx={{ alignItems: 'flex-start' }}>
                 <Grid size={{ xs: 12, md: 4 }}>
                   <FilterAutocomplete
                     label="Periods"
@@ -1696,43 +1609,6 @@ export default function CommercialPayoutReview({ agreementVersionId, version }) 
             </Paper>
           )}
 
-          {isCommercialContracts && (
-            <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mt: 2 }}>
-              <Typography fontWeight={600} sx={{ p: 2, pb: 1 }}>Payable Periods</Typography>
-              <Box sx={{ px: 2, pb: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <FilterAutocomplete
-                      label="Year"
-                      options={summaryYearOptions}
-                      value={summaryYears}
-                      onChange={setSummaryYears}
-                      allLabel="All years"
-                      emptyLabel="No years available"
-                      disabled={summaryYearOptions.length === 0}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <FilterAutocomplete
-                      label="Month"
-                      options={summaryMonthOptions}
-                      value={summaryMonths}
-                      onChange={setSummaryMonths}
-                      allLabel="All months"
-                      emptyLabel="No months available"
-                      disabled={summaryMonthOptions.length === 0}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }} sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Showing {payableItems.length} payable period(s) · Total {formatCurrency(payableTotal)}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Box>
-              <PayableSummaryTable items={payableItems} />
-            </Paper>
-          )}
         </>
       )}
     </Box>

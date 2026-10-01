@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Box, Grid, Typography, Paper, Divider, Chip, Button, Select, MenuItem,
@@ -7,11 +7,11 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Tabs, Tab,
   List, ListItemButton, ListItemText, Accordion, AccordionSummary, AccordionDetails,
   Breadcrumbs, Link as MuiLink, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Menu, IconButton, ListItemIcon
+  Menu, IconButton, ListItemIcon, CircularProgress
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { integrationApi } from '../../api/integrationApi';
-import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext, AutoMode, Check, Close } from '@mui/icons-material';
+import { ArrowBack, Edit, ExpandMore, PowerSettingsNew, SwapHoriz, History, NavigateNext, AutoMode, Check, Close, ContentCopy } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
@@ -26,26 +26,24 @@ import { buildAgreementEditPath } from '../../utils/agreementNavigation';
 import { approveAgreement, rejectAgreement, submitAgreementForApproval } from '../../store/slices/agreementSlice';
 import TransferOwnershipModal from '../../components/agreements/TransferOwnershipModal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import CommercialsUploadModal from './wizard/CommercialsUploadModal';
+
+import { getIncomeTypeDisplayName } from '../../constants/incomeTypeNames';
+import { formatCommercialValue, formatAssetMoney } from '../../utils/numberFormatting';
 import JbpReviewShowcase from './wizard/JbpReviewShowcase';
+import StoreMappingTable from './wizard/StoreMappingTable';
+import { fetchStoreMappings } from '../../api/storeMappingApi';
+import CommercialsUploadModal from './wizard/CommercialsUploadModal';
 import { resolveAgreementFinancialYearStartMonth } from '../../utils/jbpMatrixUtils';
+import AgreementCoreDetails from '../../components/review/sections/AgreementCoreDetails';
+import AssetCommercialsDetails from '../../components/review/sections/AssetCommercialsDetails';
+import GeographyLimitsDetails from '../../components/review/sections/GeographyLimitsDetails';
+import ScopeOperationsReview from '../../components/review/ScopeOperationsReview';
 import { isAssetRentalIncomeType, isCommercialContractsIncomeType, isAdHocIncomeType } from '../../utils/incomeTypeUtils';
 import { CAP_UNIT } from '../../constants/capUnit';
 import { PAYOUT_FREQUENCY_OPTIONS } from '../../constants/commercialStructure';
-import StoreMappingReviewSummary from './wizard/StoreMappingReviewSummary';
 import DocumentFileLink from '../../components/upload/DocumentFileLink';
 import dayjs from 'dayjs';
 
-const currencyFormatter = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 2,
-});
-
-function formatAssetMoney(value) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? currencyFormatter.format(numeric) : '—';
-}
 
 function formatAssetPayoutPeriods(periods = []) {
   if (!periods.length) return '—';
@@ -54,11 +52,6 @@ function formatAssetPayoutPeriods(periods = []) {
     .join('; ');
 }
 
-function formatCommercialValue(value, valueType) {
-  if (value === null || value === undefined || value === '') return '—';
-  if (valueType === 'PERCENTAGE') return `${value}%`;
-  return `₹${Number(value).toLocaleString('en-IN')}`;
-}
 
 function formatCapValue(value, capUnit) {
   if (value === null || value === undefined || value === '') return '—';
@@ -134,6 +127,15 @@ export default function AgreementDetailPage({
   const [terminateData, setTerminateData] = useState({ comments: '', requestedTerminationDate: '' });
   const [slabs, setSlabs] = useState([]);
   const [vendorDetails, setVendorDetails] = useState({});
+  const [assetStoreMappings, setAssetStoreMappings] = useState([]);
+  const [loadingStores, setLoadingStores] = useState(false);
+  const [storePage, setStorePage] = useState(0);
+  const [storeRowsPerPage, setStoreRowsPerPage] = useState(20);
+  const [storeSearch, setStoreSearch] = useState('');
+  const [draftInitializing, setDraftInitializing] = useState(false);
+  // Tracks whether the current selectedVersionId was set by the initial load
+  // (so we skip the redundant loadVersionDetail useEffect on mount).
+  const initialLoadDoneRef = useRef(false);
 
   const [actionsMenuAnchor, setActionsMenuAnchor] = useState(null);
   const actionsMenuOpen = Boolean(actionsMenuAnchor);
@@ -147,14 +149,25 @@ export default function AgreementDetailPage({
         axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_BY_ID(versionId)),
         axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_TIMELINE(versionId)),
       ]);
-      
-      setAgreement(agrRes.data);
-      
-      // Fetch any missing vendor states
-      if (agrRes.data?.vendors) {
-        const vendorsMissingState = agrRes.data.vendors.filter(v => !v.state).map(v => v.vendorId);
-        if (vendorsMissingState.length > 0) {
-          integrationApi.getVendorsByIds(vendorsMissingState)
+
+      const data = agrRes.data;
+
+      if (data.approvalStatus === 'DRAFT') {
+        enqueueSnackbar('Cannot view details for an incomplete draft. Please click the Actions menu to resume editing.', { variant: 'error' });
+        navigate('/agreements');
+        return null;
+      }
+
+      setAgreement(data);
+      setTimeline(tlRes.data);
+
+      const isCommercialContracts = isCommercialContractsIncomeType([], data.incomeTypeId, data.incomeTypeName);
+      const isAssetRental = isAssetRentalIncomeType([], data.incomeTypeId, data.incomeTypeName);
+
+      // Fetch auxiliaries concurrently and catch individually to prevent crashing main details
+      Promise.allSettled([
+        (data.vendors && data.vendors.some(v => !v.state))
+          ? integrationApi.getVendorsByIds(data.vendors.filter(v => !v.state).map(v => v.vendorId))
             .then(vendorRes => {
               const items = Array.isArray(vendorRes.data) ? vendorRes.data : [];
               const detailsMap = {};
@@ -163,12 +176,22 @@ export default function AgreementDetailPage({
               });
               setVendorDetails(detailsMap);
             })
-            .catch(err => console.error("Failed to fetch missing vendor details", err));
-        }
-      }
-      
-      setTimeline(tlRes.data);
-      return agrRes.data;
+          : Promise.resolve(),
+
+        (!isCommercialContracts && data.commercialStructure === 'SLAB')
+          ? axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_SLABS(versionId))
+            .then(res => setSlabs(Array.isArray(res.data) ? res.data : []))
+          : Promise.resolve(setSlabs([])),
+
+        isAssetRental
+          ? fetchStoreMappings(versionId)
+            .then(res => setAssetStoreMappings(Array.isArray(res) ? res : []))
+          : Promise.resolve(setAssetStoreMappings([]))
+      ]).catch(() => {
+        // Fallback catch (should be handled by individual endpoints, but just in case)
+      });
+
+      return data;
     } catch {
       enqueueSnackbar('Failed to load version details', { variant: 'error' });
       return null;
@@ -203,19 +226,44 @@ export default function AgreementDetailPage({
       setGroup(groupRes.data);
       setVersions(versionsRes.data);
 
-      const pendingVersion = versionsRes.data.find((v) => v.approvalStatus === 'PENDING_APPROVAL');
-      const nextVersionId = preferredVersionId
-        || pendingVersion?.id
-        || groupRes.data.currentVersionId
-        || versionsRes.data[versionsRes.data.length - 1]?.id;
+      const allVersions = versionsRes.data || [];
+      const queryParams = new URLSearchParams(window.location.search);
+      const versionIdFromUrl = queryParams.get('versionId');
 
-      setSelectedVersionId(nextVersionId);
-      if (nextVersionId) {
-        await loadVersionDetail(nextVersionId);
-      } else {
+      let nextVersionId = preferredVersionId || (versionIdFromUrl ? Number(versionIdFromUrl) : null);
+      
+      if (!nextVersionId) {
+        const activeVersion = allVersions.find((v) => v.computedStatus === 'ACTIVE');
+        const latestApprovedVersion = [...allVersions].sort((a, b) => b.versionNumber - a.versionNumber).find((v) => v.approvalStatus === 'APPROVED');
+        
+        if (activeVersion) {
+          nextVersionId = activeVersion.id;
+        } else if (latestApprovedVersion) {
+          nextVersionId = latestApprovedVersion.id;
+        } else {
+          const sorted = [...allVersions].sort((a, b) => b.versionNumber - a.versionNumber);
+          nextVersionId = sorted[0]?.id;
+        }
+      }
+
+      if (!nextVersionId) {
         setAgreement(null);
         setTimeline([]);
+        setSelectedVersionId(null);
+        return;
       }
+
+      // Mark that we are handling the version detail fetch inline here,
+      // so the selectedVersionId useEffect below does NOT fire a duplicate request.
+      initialLoadDoneRef.current = false;
+      setSelectedVersionId(nextVersionId);
+
+      // Fetch version detail in parallel with the above already-settled group/versions.
+      // This replaces the 2nd waterfall round-trip previously triggered by useEffect.
+      await loadVersionDetail(nextVersionId);
+
+      // Signal that the initial parallel load is complete.
+      initialLoadDoneRef.current = true;
     } catch {
       enqueueSnackbar('Failed to load agreement', { variant: 'error' });
     } finally {
@@ -230,39 +278,19 @@ export default function AgreementDetailPage({
     setAgreement(null);
     setTimeline([]);
     setSelectedVersionId(null);
+    initialLoadDoneRef.current = false;
     load();
   }, [agreementId]);
 
+  // Only fire loadVersionDetail for user-triggered version switches (e.g. history tab).
+  // The initial mount load is handled inline in load() above to avoid a 2nd waterfall.
   useEffect(() => {
     if (!selectedVersionId) return;
+    if (!initialLoadDoneRef.current) return; // Skip — initial load already fetched this version.
     loadVersionDetail(selectedVersionId);
   }, [selectedVersionId, loadVersionDetail]);
 
-  useEffect(() => {
-    if (!selectedVersionId || !agreement) {
-      setSlabs([]);
-      return;
-    }
-    const isCommercialContracts = isCommercialContractsIncomeType(
-      [],
-      agreement.incomeTypeId,
-      agreement.incomeTypeName,
-    );
-    if (isCommercialContracts || agreement.commercialStructure !== 'SLAB') {
-      setSlabs([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await axiosInstance.get(ENDPOINTS.AGREEMENT_VERSION_SLABS(selectedVersionId));
-        if (!cancelled) setSlabs(Array.isArray(data) ? data : []);
-      } catch {
-        if (!cancelled) setSlabs([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [selectedVersionId, agreement?.commercialStructure, agreement?.incomeTypeId, agreement?.incomeTypeName]);
+
 
   const refreshAfterMutation = async (updated, versionId = selectedVersionId) => {
     applyVersionPatch(updated);
@@ -304,6 +332,7 @@ export default function AgreementDetailPage({
         : `New version V${data.versionNumber} submitted for approval`;
       enqueueSnackbar(msg, { variant: 'success' });
       await load();
+      initialLoadDoneRef.current = true;
       setSelectedVersionId(data.id);
       onActionComplete?.();
     } catch (err) {
@@ -361,8 +390,13 @@ export default function AgreementDetailPage({
     && Boolean(activeVersionId && selectedVersionId !== activeVersionId);
   const requiresSubmitRevisionReason = (agreement?.versionNumber ?? 1) > 1;
 
-  const maxVersionInGroup = Math.max(...versions.map(v => v.versionNumber), 0);
+  // Only consider published (non-DRAFT) versions when determining the latest version
+  const publishedVersions = versions.filter(v => v.approvalStatus !== 'DRAFT');
+  const maxVersionInGroup = Math.max(...publishedVersions.map(v => v.versionNumber), 0);
   const isLatestVersion = agreement?.versionNumber === maxVersionInGroup;
+
+  const maxApprovedVersionInGroup = Math.max(...versions.filter(v => v.approvalStatus === 'APPROVED').map(v => v.versionNumber), 0);
+  const isSupersededByApproved = agreement?.versionNumber < maxApprovedVersionInGroup;
 
   const actions = agreement
     ? getDetailPageActions(
@@ -381,6 +415,12 @@ export default function AgreementDetailPage({
     agreement?.incomeTypeId,
     agreement?.incomeTypeName,
   );
+
+  useEffect(() => {
+    setStorePage(0);
+    setStoreSearch('');
+  }, [selectedVersionId]);
+
   const isSlabStructure = agreement?.commercialStructure === 'SLAB';
   const showJbpMatrix = Boolean(
     agreement && isCommercialContracts && (isSlabStructure || agreement.jbpCommitted),
@@ -396,7 +436,6 @@ export default function AgreementDetailPage({
     : assetCategory === 'ACTIVITY'
       ? 'Activity'
       : (assetCategory || '—');
-  const assetStoreMappings = Array.isArray(agreement?.storeMappings) ? agreement.storeMappings : [];
 
   const daysToExpiry = agreement?.expiryDate
     ? dayjs(agreement.expiryDate).startOf('day').diff(dayjs().startOf('day'), 'day')
@@ -427,13 +466,55 @@ export default function AgreementDetailPage({
     }
   };
 
-  const handleRenew = () => {
-    const versionId = group?.currentVersionId || selectedVersionId;
-    const path = buildAgreementEditPath(versionId, { step: 1, mode: 'renew' });
-    if (path) navigate(path);
+  const handleRenew = async () => {
+    try {
+      setDraftInitializing(true);
+      const versionId = group?.currentVersionId || selectedVersionId;
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_INIT_RENEW(versionId));
+      navigate(`/agreements/${data.id}/edit?step=1`);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to initialize renewal', { variant: 'error' });
+    } finally {
+      setDraftInitializing(false);
+    }
+  };
+
+  const handleEditApproved = async () => {
+    try {
+      setDraftInitializing(true);
+      const versionId = group?.currentVersionId || selectedVersionId;
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_INIT_EDIT(versionId));
+      navigate(`/agreements/${data.id}/edit?step=1`);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to initialize edit', { variant: 'error' });
+    } finally {
+      setDraftInitializing(false);
+    }
+  };
+
+  const handleRevise = async () => {
+    try {
+      setDraftInitializing(true);
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_INIT_REVISE(selectedVersionId));
+      navigate(`/agreements/${data.id}/edit?step=1`);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to initialize revision', { variant: 'error' });
+    } finally {
+      setDraftInitializing(false);
+    }
+  };
+
+  const handleClone = async () => {
+    try {
+      const { data } = await axiosInstance.post(ENDPOINTS.AGREEMENT_VERSION_CLONE(selectedVersionId));
+      navigate(`/agreements/${data.id}/edit`);
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || 'Failed to clone agreement', { variant: 'error' });
+    }
   };
 
   const handleSelectVersion = (versionId) => {
+    initialLoadDoneRef.current = true; // Allow the useEffect to fire loadVersionDetail for user switches
     setSelectedVersionId(versionId);
     setActiveTab('details');
   };
@@ -499,9 +580,11 @@ export default function AgreementDetailPage({
   ];
 
   const productColumns = [
-    { field: 'productId', headerName: 'Product ID', width: 120, renderCell: (params) => (
-      <Chip label={params.value} size="small" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', bgcolor: 'grey.100', borderRadius: '6px' }} />
-    ) },
+    {
+      field: 'productId', headerName: 'Product ID', width: 120, renderCell: (params) => (
+        <Chip label={params.value} size="small" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', bgcolor: 'grey.100', borderRadius: '6px' }} />
+      )
+    },
     { field: 'productName', headerName: 'Product Name', flex: 1.5, minWidth: 200 },
     { field: 'divisionName', headerName: 'Division', flex: 1, renderCell: (params) => params.row.divisionName || '—' },
     { field: 'manufacturerName', headerName: 'Manufacturer', flex: 1, renderCell: (params) => params.row.manufacturerName || '—' },
@@ -539,132 +622,142 @@ export default function AgreementDetailPage({
 
       {/* Header */}
       {!isOperationalReview && (
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 2 }}>
-        <Box sx={{ flex: '1 1 auto', minWidth: 0, pr: 2 }}>
-          <Typography variant="h5" fontWeight={700} sx={{ wordBreak: 'break-word' }}>{displayName}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
-            {group?.agreementGroupName || group?.name}
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexShrink: 0 }}>
-          {/* Action Buttons */}
-          {agreement && (
-            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-              {!isLatestVersion && (
-                <Alert severity="warning" sx={{ py: 0, px: 2, display: 'flex', alignItems: 'center', '& .MuiAlert-message': { padding: '4px 0' } }}>
-                  A newer version already exists for this agreement group.
-                </Alert>
-              )}
-              {isLatestVersion && actions?.submit && (
-                <Button variant="contained" onClick={submitModal.open} sx={{ bgcolor: BRAND.red }}>
-                  Submit for Approval
-                </Button>
-              )}
-
-              {/* Actions Dropdown Menu */}
-              {isLatestVersion && (actions?.approve || actions?.editDraft || actions?.editApproved || actions?.revise || (showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || (daysToExpiry != null && daysToExpiry <= 90) || Boolean(agreement?.inProgressFlag))) || showRenewButton || actions?.terminate || actions?.transfer) && (
-                <>
-                  <Button
-                    variant="outlined"
-                    onClick={handleActionsMenuOpen}
-                    endIcon={<ExpandMore />}
-                    color="inherit"
-                    sx={{ color: 'text.primary', borderColor: 'divider', bgcolor: 'white' }}
-                  >
-                    Actions
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 2 }}>
+          <Box sx={{ flex: '1 1 auto', minWidth: 0, pr: 2 }}>
+            <Typography variant="h5" fontWeight={700} sx={{ wordBreak: 'break-word' }}>{displayName}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+              {group?.agreementGroupName || group?.name}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexShrink: 0 }}>
+            {/* Action Buttons */}
+            {agreement && (
+              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+                {isSupersededByApproved && (
+                  <Alert severity="warning" sx={{ py: 0, px: 2, display: 'flex', alignItems: 'center', '& .MuiAlert-message': { padding: '4px 0' } }}>
+                    A newer version already exists for this agreement group.
+                  </Alert>
+                )}
+                {actions?.submit && (
+                  <Button variant="contained" onClick={submitModal.open} sx={{ bgcolor: BRAND.red }}>
+                    Submit for Approval
                   </Button>
-                  <Menu
-                    anchorEl={actionsMenuAnchor}
-                    open={actionsMenuOpen}
-                    onClose={handleActionsMenuClose}
-                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                    slotProps={{ paper: { sx: { mt: 1, minWidth: 200, boxShadow: '0px 4px 20px rgba(0,0,0,0.08)' } } }}
-                  >
-                    {actions?.approve && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); handleApprove(); }}>
-                        <ListItemIcon><Check fontSize="small" sx={{ color: BRAND.green }} /></ListItemIcon>
-                        <ListItemText sx={{ color: BRAND.green, fontWeight: 600 }}>Approve</ListItemText>
-                      </MenuItem>
-                    )}
-                    {actions?.approve && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); rejectModal.open(); }}>
-                        <ListItemIcon><Close fontSize="small" color="error" /></ListItemIcon>
-                        <ListItemText sx={{ color: 'error.main', fontWeight: 600 }}>Reject</ListItemText>
-                      </MenuItem>
-                    )}
-                    {actions?.approve && <Divider />}
+                )}
 
-                    {actions?.editDraft && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); navigate(`/agreements/${selectedVersionId}/edit`); }}>
-                        <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
-                        <ListItemText>Edit Draft</ListItemText>
-                      </MenuItem>
-                    )}
-                    {actions?.editApproved && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); navigate(buildAgreementEditPath(group?.currentVersionId || selectedVersionId)); }}>
-                        <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
-                        <ListItemText>Edit (New Version)</ListItemText>
-                      </MenuItem>
-                    )}
-                    {actions?.revise && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); navigate(buildAgreementEditPath(selectedVersionId)); }}>
-                        <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
-                        <ListItemText>Revise & Resubmit</ListItemText>
-                      </MenuItem>
-                    )}
-                    {showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || (daysToExpiry != null && daysToExpiry <= 90) || Boolean(agreement?.inProgressFlag)) && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); handleToggleInProgress(); }}>
-                        <ListItemIcon><AutoMode fontSize="small" /></ListItemIcon>
-                        <ListItemText>{agreement?.inProgressFlag ? 'Clear Discussions' : 'Mark Discussions in Progress'}</ListItemText>
-                      </MenuItem>
-                    )}
-                    {showRenewButton && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); handleRenew(); }}>
-                        <ListItemIcon><History fontSize="small" /></ListItemIcon>
-                        <ListItemText>Renew Agreement</ListItemText>
-                      </MenuItem>
-                    )}
-                    {actions?.transfer && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); transferModal.open(); }}>
-                        <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
-                        <ListItemText>Transfer Ownership</ListItemText>
-                      </MenuItem>
-                    )}
-                    {actions?.terminate && (
-                      <MenuItem onClick={() => { handleActionsMenuClose(); terminateModal.open(); }}>
-                        <ListItemIcon><PowerSettingsNew fontSize="small" color="error" /></ListItemIcon>
-                        <ListItemText sx={{ color: 'error.main' }}>Terminate</ListItemText>
-                      </MenuItem>
-                    )}
-                  </Menu>
-                </>
-              )}
-            </Box>
-          )}
+                {/* Actions Dropdown Menu */}
+                {(actions?.approve || actions?.editDraft || actions?.editApproved || actions?.revise || (showLifecycleActions && (agreement?.computedStatus === 'EXPIRED' || (daysToExpiry != null && daysToExpiry <= 90) || Boolean(agreement?.inProgressFlag))) || showRenewButton || actions?.terminate || actions?.transfer) && (
+                  <>
+                    <Button
+                      variant="outlined"
+                      onClick={handleActionsMenuOpen}
+                      endIcon={draftInitializing ? <CircularProgress size={16} /> : <ExpandMore />}
+                      disabled={draftInitializing}
+                      color="inherit"
+                      sx={{ color: 'text.primary', borderColor: 'divider', bgcolor: 'white' }}
+                    >
+                      {draftInitializing ? 'Initializing...' : 'Actions'}
+                    </Button>
+                    <Menu
+                      anchorEl={actionsMenuAnchor}
+                      open={actionsMenuOpen}
+                      onClose={handleActionsMenuClose}
+                      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                      transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                      slotProps={{ paper: { sx: { mt: 1, minWidth: 200, boxShadow: '0px 4px 20px rgba(0,0,0,0.08)' } } }}
+                    >
+                      {actions?.approve && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); handleApprove(); }}>
+                          <ListItemIcon><Check fontSize="small" /></ListItemIcon>
+                          <ListItemText>Approve</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.approve && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); rejectModal.open(); }}>
+                          <ListItemIcon><Close fontSize="small" /></ListItemIcon>
+                          <ListItemText>Reject</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.approve && <Divider />}
 
-          {/* Version Switcher */}
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <Select value={selectedVersionId || ''} onChange={(e) => setSelectedVersionId(e.target.value)}>
-              {versions.map((v) => (
-                <MenuItem key={v.id} value={v.id}>
-                  V{v.versionNumber}
-                  {group?.currentVersionId === v.id ? ' (Current)' : ''}
-                  {v.approvalStatus === 'PENDING_APPROVAL' ? ' (Pending Review)' : ''}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {agreement && <StatusBadge status={agreement.computedStatus} />}
+                      {actions?.editDraft && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); navigate(`/agreements/${selectedVersionId}/edit`); }}>
+                          <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+                          <ListItemText>Edit Draft</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.editApproved && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); handleEditApproved(); }}>
+                          <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+                          <ListItemText>Edit (New Version)</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.revise && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); handleRevise(); }}>
+                          <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+                          <ListItemText>Revise & Resubmit</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.toggleInProgress && (agreement?.computedStatus === 'EXPIRED' || (daysToExpiry != null && daysToExpiry <= 90) || Boolean(agreement?.inProgressFlag)) && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); handleToggleInProgress(); }}>
+                          <ListItemIcon><AutoMode fontSize="small" /></ListItemIcon>
+                          <ListItemText>{agreement?.inProgressFlag ? 'Clear Discussions' : 'Mark Discussions in Progress'}</ListItemText>
+                        </MenuItem>
+                      )}
+                      {showRenewButton && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); handleRenew(); }}>
+                          <ListItemIcon><History fontSize="small" /></ListItemIcon>
+                          <ListItemText>Renew Agreement</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.clone && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); handleClone(); }}>
+                          <ListItemIcon><ContentCopy fontSize="small" /></ListItemIcon>
+                          <ListItemText>Clone to New Agreement</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.transfer && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); transferModal.open(); }}>
+                          <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
+                          <ListItemText>Transfer Ownership</ListItemText>
+                        </MenuItem>
+                      )}
+                      {actions?.terminate && (
+                        <MenuItem onClick={() => { handleActionsMenuClose(); terminateModal.open(); }}>
+                          <ListItemIcon><PowerSettingsNew fontSize="small" color="error" /></ListItemIcon>
+                          <ListItemText sx={{ color: 'error.main' }}>Terminate</ListItemText>
+                        </MenuItem>
+                      )}
+                    </Menu>
+                  </>
+                )}
+              </Box>
+            )}
+
+            {/* Version Switcher */}
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <Select value={selectedVersionId || ''} onChange={(e) => {
+                initialLoadDoneRef.current = true;
+                setSelectedVersionId(e.target.value);
+              }}>
+                {versions.filter(v => v.approvalStatus !== 'DRAFT').map((v) => (
+                  <MenuItem key={v.id} value={v.id}>
+                    V{v.versionNumber}
+                    {group?.currentVersionId === v.id ? ' (Current)' : ''}
+                    {v.approvalStatus === 'PENDING_APPROVAL' ? ' (Pending Review)' : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {agreement && <StatusBadge status={agreement.computedStatus} />}
+          </Box>
         </Box>
-      </Box>
       )}
 
       {!isOperationalReview && (
-      <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Details" value="details" />
-        <Tab label="Version History" value="history" icon={<History sx={{ fontSize: 18 }} />} iconPosition="start" />
-      </Tabs>
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Tab label="Details" value="details" />
+          <Tab label="Version History" value="history" icon={<History sx={{ fontSize: 18 }} />} iconPosition="start" />
+        </Tabs>
       )}
 
       {isHistorical && (
@@ -699,10 +792,10 @@ export default function AgreementDetailPage({
         </Alert>
       )}
 
-      {activeTab === 'history' && !isOperationalReview ? (
+      {activeTab === 'history' && !isOperationalReview && (
         <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
           <List disablePadding>
-            {versions.map((v) => (
+            {versions.filter(v => v.approvalStatus !== 'DRAFT').map((v) => (
               <Box key={v.id}>
                 <ListItemButton
                   selected={selectedVersionId === v.id}
@@ -735,304 +828,212 @@ export default function AgreementDetailPage({
               </Box>
             ))}
           </List>
-        </Paper>
-      ) : (
-      <Box>
-        {/* Main Details Section */}
-        <Box sx={{ width: '100%' }}>
-          {agreement ? (
-            <>
-              <Accordion defaultExpanded elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Typography fontWeight={600}>{isAssetRental ? 'Ownership' : 'Vendors'}</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={1}>
-                    <Grid size={4}>
-                      <Typography variant="caption" color="text.secondary">Owner</Typography>
-                      <Typography variant="body2">{agreement.ownerName}</Typography>
-                    </Grid>
-                    {!isAssetRental && (
-                      <Grid size={12}>
-                        <Divider sx={{ my: 2 }} />
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>Selected Vendors</Typography>
-                        <Box sx={{ maxWidth: 600, width: '100%' }}>
-                          <DataGrid
-                            rows={agreement.vendors || []}
-                            columns={vendorColumns}
-                            getRowId={(row) => row.vendorId}
-                            autoHeight
-                            initialState={{
-                              pagination: { paginationModel: { pageSize: 10, page: 0 } },
-                            }}
-                            pageSizeOptions={[5, 10, 25]}
-                            disableColumnMenu
-                            unstable_headerFilters
-                            sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
-                            disableRowSelectionOnClick
-                          />
-                        </Box>
-                      </Grid>
-                    )}
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
+        </Paper>)}
 
-              <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                <Typography fontWeight={600} sx={{ mb: 1.5 }}>Agreement Details</Typography>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Agreement Name</Typography>
-                    <Typography variant="body2" fontWeight={600}>{agreement.agreementName || '—'}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Agreement Group</Typography>
-                    <Typography variant="body2">{agreement.agreementGroupName || group?.agreementGroupName || group?.name || '—'}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Income Type</Typography>
-                    <Typography variant="body2">{agreement.incomeTypeName || '—'}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Agreement Type</Typography>
-                    <Typography variant="body2">{agreement.agreementTypeName || group?.agreementTypeName || '—'}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Start Date</Typography>
-                    <Typography variant="body2">{agreement.startDate ? dayjs(agreement.startDate).format('DD MMM YYYY') : '—'}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                    <Typography variant="caption" color="text.secondary">Expiry Date</Typography>
-                    <Typography variant="body2">{agreement.expiryDate ? dayjs(agreement.expiryDate).format('DD MMM YYYY') : '—'}</Typography>
-                  </Grid>
-                  {!isAssetRental && (
-                    <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                      <Typography variant="caption" color="text.secondary">Commercial Structure</Typography>
-                      <Typography variant="body2">{agreement.commercialStructure || '—'}</Typography>
-                    </Grid>
-                  )}
-                  {!isAssetRental && agreement.commercialStructure === 'FLAT' && (
-                    <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
-                      <Typography variant="caption" color="text.secondary">Commercial Value</Typography>
-                      <Typography variant="body2">{formatCommercialValue(agreement.commercialValue, agreement.flatValueType)}</Typography>
-                    </Grid>
-                  )}
-                </Grid>
-              </Paper>
-
-              {isAssetRental && (
-                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Asset Commercials</Typography>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" color="text.secondary">Asset Category</Typography>
-                      <Typography variant="body2">{assetCategoryLabel}</Typography>
-                    </Grid>
-                    {assetCategory !== 'ACTIVITY' && (
-                      <Grid size={{ xs: 6, sm: 3 }}>
-                        <Typography variant="caption" color="text.secondary">Asset Type</Typography>
-                        <Typography variant="body2">{agreement.asset?.assetType || '—'}</Typography>
-                      </Grid>
-                    )}
-                    <Grid size={{ xs: 6, sm: 3 }}>
-                      <Typography variant="caption" color="text.secondary">Payout Mode</Typography>
-                      <Typography variant="body2">
-                        {assetPayoutMode === 'PER_STORE'
-                          ? 'Payout per Store'
-                          : assetPayoutMode === 'FLAT'
-                            ? 'Flat Payout'
-                            : '—'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                        {assetPayoutMode === 'PER_STORE' ? 'Payout Schedule' : 'Flat Payout Amount'}
-                      </Typography>
-                      {assetPayoutMode === 'PER_STORE' ? (
-                        (!agreement.assetPayoutPeriods || agreement.assetPayoutPeriods.length === 0) ? (
-                          <Typography variant="body2">—</Typography>
-                        ) : (
-                          <Box sx={{ width: '100%' }}>
-                            <DataGrid
-                              rows={agreement.assetPayoutPeriods || []}
-                              columns={assetPayoutColumns}
-                              getRowId={(row) => row.id || row.periodMonths}
-                              autoHeight
-                              initialState={{
-                                pagination: { paginationModel: { pageSize: 5, page: 0 } },
-                              }}
-                              pageSizeOptions={[5, 10]}
-                              disableColumnMenu
-                              sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
-                              disableRowSelectionOnClick
-                            />
-                          </Box>
-                        )
-                      ) : (
-                        <Typography variant="body2">{formatAssetMoney(agreement.asset?.flatPayout)}</Typography>
-                      )}
-                    </Grid>
-                    {agreement.asset?.remarks && (
-                      <Grid size={12}>
-                        <Typography variant="caption" color="text.secondary">Remarks</Typography>
-                        <Typography variant="body2">{agreement.asset.remarks}</Typography>
-                      </Grid>
-                    )}
-                    <Grid size={12}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                        Participating Stores
-                      </Typography>
-                      <StoreMappingReviewSummary stores={assetStoreMappings} versionId={selectedVersionId} />
-                    </Grid>
-                  </Grid>
-                </Paper>
-              )}
-
-              {showJbpMatrix && (
-                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>JBP Relational Matrix</Typography>
-                  <JbpReviewShowcase
-                    agreementVersionId={selectedVersionId}
-                    financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
-                  />
-                </Paper>
-              )}
-
-              {showLegacyTargetsMatrix && (
-                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Targets Matrix</Typography>
-                  <CommercialsUploadModal
-                    embedded
-                    readOnly
-                    agreementId={selectedVersionId}
-                    slabs={slabs}
+      {activeTab === 'details' && (
+        <Box>
+          <Box sx={{ width: '100%' }}>
+            {agreement ? (
+              <>
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2, width: '100%' }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Core Details & Geography</Typography>
+                  <AgreementCoreDetails
+                    ownerName={agreement.ownerName}
+                    agreementName={agreement.agreementName}
+                    groupName={agreement.agreementGroupName || group?.agreementGroupName || group?.name}
+                    incomeTypeName={agreement.incomeTypeName}
+                    agreementTypeName={agreement.agreementTypeName || group?.agreementTypeName}
                     startDate={agreement.startDate}
                     expiryDate={agreement.expiryDate}
-                    financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
+                    commercialStructure={agreement.commercialStructure}
+                    commercialValue={agreement.commercialValue}
+                    flatValueType={agreement.flatValueType || agreement.valueType}
+                    isAssetRental={isAssetRental}
+                    notes={agreement.notes || agreement.details?.notes}
+                    locations={!isAssetRental ? (agreement.locations || []) : []}
+                    legacyStates={!isAssetRental ? (agreement.partnerStates || []) : null}
+                    legacyCities={!isAssetRental ? (agreement.partnerCities || []) : null}
+                    geographyMode={!isAssetRental ? agreement.geographyMode : null}
                   />
                 </Paper>
-              )}
 
-              {isAdHoc && isSlabStructure && (
-                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Details Structure</Typography>
-                  <Box sx={{ width: '100%', mt: 1 }}>
-                    <DataGrid
-                      rows={slabs || []}
-                      columns={slabColumns}
-                      getRowId={(row) => row.id}
-                      autoHeight
-                      initialState={{
-                        pagination: { paginationModel: { pageSize: 5, page: 0 } },
-                      }}
-                      pageSizeOptions={[5, 10]}
-                      disableColumnMenu
-                      sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
-                      disableRowSelectionOnClick
+                {!isAssetRental && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                    <Typography fontWeight={600} sx={{ mb: 1.5 }}>Scope & Operations</Typography>
+                    <ScopeOperationsReview
+                      vendors={agreement.vendors}
+                      vendorDetailsMap={vendorDetails}
+                      productRules={{}}
+                      version={agreement}
+                      agreementVersionId={selectedVersionId}
+                      adhocSubType={agreement.adhocSubType || agreement.details?.adhocSubType}
                     />
-                  </Box>
-                </Paper>
-              )}
-
-              {/* Supporting Documents Section */}
-              <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                <Typography fontWeight={600} sx={{ mb: 1.5 }}>
-                  Supporting Documents ({agreement.documents?.length || 0})
-                </Typography>
-                {!agreement.documents || agreement.documents.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">No supporting documents uploaded.</Typography>
-                ) : (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {agreement.documents.map((doc, idx) => (
-                      <Box key={doc.id || doc.fileUrl || idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Chip
-                          label={doc.documentType || 'Document'}
-                          size="small"
-                          variant="outlined"
-                          color="primary"
-                          sx={{ fontWeight: 600, fontSize: '0.725rem' }}
-                        />
-                        <DocumentFileLink
-                          fileUrl={doc.fileUrl}
-                          fileName={doc.fileName || doc.originalFilename || doc.originalFileName || 'View Document'}
-                        />
-                      </Box>
-                    ))}
-                  </Box>
+                  </Paper>
                 )}
-              </Paper>
 
-              {/* Selected / Computed Products Table */}
-              {!isAssetRental && (
-                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
-                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>
-                    Selected Products ({agreement.products?.length || 0})
-                  </Typography>
-                  {!agreement.products || agreement.products.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">No products selected.</Typography>
-                  ) : (
+                {isAssetRental && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                    <Typography fontWeight={600} sx={{ mb: 1.5 }}>Asset Commercials</Typography>
+                    <AssetCommercialsDetails
+                      agreement={agreement}
+                      assetStoreMappings={assetStoreMappings}
+                      versionId={selectedVersionId}
+                    />
+                    {assetStoreMappings?.length > 0 && (() => {
+                      const filteredStores = assetStoreMappings.filter((s) => {
+                        if (!storeSearch) return true;
+                        const q = storeSearch.toLowerCase();
+                        const id = s.storeId || s.storeCode || s.code || '';
+                        const name = s.storeName || s.name || '';
+                        return id.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+                      });
+                      const displayedStores = filteredStores.slice(storePage * storeRowsPerPage, (storePage + 1) * storeRowsPerPage);
+
+                      return (
+                        <Box sx={{ mt: 2, borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+                          <StoreMappingTable
+                            title="Participating Stores"
+                            stores={displayedStores}
+                            readOnly={true}
+                            maxHeight={400}
+                            loading={loadingStores}
+                            page={storePage}
+                            rowsPerPage={storeRowsPerPage}
+                            totalElements={filteredStores.length}
+                            onPageChange={(e, newPage) => setStorePage(newPage)}
+                            onRowsPerPageChange={(e) => {
+                              setStoreRowsPerPage(parseInt(e.target.value, 10));
+                              setStorePage(0);
+                            }}
+                            search={storeSearch}
+                            onSearchChange={(val) => {
+                              setStoreSearch(val);
+                              setStorePage(0);
+                            }}
+                          />
+                        </Box>
+                      );
+                    })()}
+                  </Paper>
+                )}
+
+                {showJbpMatrix && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                    <Typography fontWeight={600} sx={{ mb: 1.5 }}>JBP Relational Matrix</Typography>
+                    <JbpReviewShowcase
+                      agreementVersionId={selectedVersionId}
+                      financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
+                    />
+                  </Paper>
+                )}
+
+                {showLegacyTargetsMatrix && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                    <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Targets Matrix</Typography>
+                    <CommercialsUploadModal
+                      embedded
+                      readOnly
+                      agreementId={selectedVersionId}
+                      slabs={slabs}
+                      startDate={agreement.startDate}
+                      expiryDate={agreement.expiryDate}
+                      financialYearStartMonth={resolveAgreementFinancialYearStartMonth({ version: agreement })}
+                    />
+                  </Paper>
+                )}
+
+                {isAdHoc && isSlabStructure && (
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                    <Typography fontWeight={600} sx={{ mb: 1.5 }}>Commercial Details Structure</Typography>
                     <Box sx={{ width: '100%', mt: 1 }}>
                       <DataGrid
-                        rows={agreement.products || []}
-                        columns={productColumns}
-                        getRowId={(row) => row.productId || Math.random().toString()}
+                        rows={slabs || []}
+                        columns={slabColumns}
+                        getRowId={(row) => row.id}
                         autoHeight
                         initialState={{
-                          pagination: { paginationModel: { pageSize: 10, page: 0 } },
+                          pagination: { paginationModel: { pageSize: 5, page: 0 } },
                         }}
-                        pageSizeOptions={[10, 25, 50]}
+                        pageSizeOptions={[5, 10]}
                         disableColumnMenu
-                        unstable_headerFilters
                         sx={{ border: 0, '& .MuiDataGrid-cell': { borderColor: 'grey.200' }, '& .MuiDataGrid-columnHeaders': { borderColor: 'grey.200', bgcolor: 'grey.50' } }}
                         disableRowSelectionOnClick
                       />
                     </Box>
+                  </Paper>
+                )}
+
+                {/* Supporting Documents Section */}
+                <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+                  <Typography fontWeight={600} sx={{ mb: 1.5 }}>
+                    Supporting Documents ({agreement.documents?.length || 0})
+                  </Typography>
+                  {!agreement.documents || agreement.documents.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">No supporting documents uploaded.</Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {agreement.documents.map((doc, idx) => (
+                        <Box key={doc.id || doc.fileUrl || idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <Chip
+                            label={doc.documentType || 'Document'}
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            sx={{ fontWeight: 600, fontSize: '0.725rem' }}
+                          />
+                          <DocumentFileLink
+                            fileUrl={doc.fileUrl}
+                            fileName={doc.fileName || doc.originalFilename || doc.originalFileName || 'View Document'}
+                          />
+                        </Box>
+                      ))}
+                    </Box>
                   )}
                 </Paper>
-              )}
-            </>
-          ) : (
-            <Typography color="text.secondary">Select a version to view details.</Typography>
-          )}
 
-          {/* Approval Timeline */}
-          {agreement && (
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', mt: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} mb={3}>Approval Timeline</Typography>
-              {timeline.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">No activity yet</Typography>
-              ) : (
-                <Stepper orientation="horizontal" nonLinear alternativeLabel>
-                  {timeline.map((t, i) => (
-                    <Step key={t.id} active completed>
-                      <StepLabel
-                        slots={{ stepIcon: TimelineStepIcon }}
-                        slotProps={{
-                          stepIcon: {
-                            color: ACTION_COLOR[t.operationalEvent || t.action] || '#999',
-                          },
-                        }}
-                        optional={
-                          <Box sx={{ mt: 1, textAlign: 'center' }}>
-                            {t.remarks && <Typography variant="caption" color="text.secondary" display="block">"{t.remarks}"</Typography>}
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              {t.timestamp ? dayjs(t.timestamp).format('DD MMM YYYY, hh:mm A') : ''}
-                            </Typography>
-                          </Box>
-                        }
-                      >
-                        <Typography variant="body2" fontWeight={600}>
-                          {formatTimelineAction(t)} — {t.actorName || `User ${t.actorUserId}`}
-                        </Typography>
-                      </StepLabel>
-                    </Step>
-                  ))}
-                </Stepper>
-              )}
-            </Paper>
-          )}
+              </>
+            ) : (
+              <Typography color="text.secondary">Select a version to view details.</Typography>
+            )}
+
+            {/* Approval Timeline */}
+            {agreement && (
+              <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', mt: 2 }}>
+                <Typography variant="subtitle2" fontWeight={600} mb={3}>Approval Timeline</Typography>
+                {timeline.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No activity yet</Typography>
+                ) : (
+                  <Stepper orientation="horizontal" nonLinear alternativeLabel>
+                    {timeline.map((t, i) => (
+                      <Step key={t.id} active completed>
+                        <StepLabel
+                          slots={{ stepIcon: TimelineStepIcon }}
+                          slotProps={{
+                            stepIcon: {
+                              color: ACTION_COLOR[t.operationalEvent || t.action] || '#999',
+                            },
+                          }}
+                          optional={
+                            <Box sx={{ mt: 1, textAlign: 'center' }}>
+                              {t.remarks && <Typography variant="caption" color="text.secondary" display="block">"{t.remarks}"</Typography>}
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {t.timestamp ? dayjs(t.timestamp).format('DD MMM YYYY, hh:mm A') : ''}
+                              </Typography>
+                            </Box>
+                          }
+                        >
+                          <Typography variant="body2" fontWeight={600}>
+                            {formatTimelineAction(t)} — {t.actorName || `User ${t.actorUserId}`}
+                          </Typography>
+                        </StepLabel>
+                      </Step>
+                    ))}
+                  </Stepper>
+                )}
+              </Paper>
+            )}
+          </Box>
         </Box>
-      </Box>
       )}
 
       <Dialog

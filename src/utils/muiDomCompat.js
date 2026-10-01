@@ -10,6 +10,9 @@ export function toMuiTextFieldSlotProps(params = {}) {
     inputProps,
     InputLabelProps,
     inputLabelProps,
+    renderTags,
+    renderInput,
+    ownerState,
     ...rest
   } = params;
 

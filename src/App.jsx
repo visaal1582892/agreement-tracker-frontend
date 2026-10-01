@@ -19,9 +19,11 @@ import AgreementGroupWizardPage from './pages/agreements/AgreementGroupWizardPag
 import AgreementDetailPage from './pages/agreements/AgreementDetailPage';
 import AgreementEditPage from './pages/agreements/AgreementEditPage';
 import CommercialPayoutsPage from './pages/agreements/CommercialPayoutsPage';
+import RevenueRecognitionDashboard from './pages/dashboard/RevenueRecognitionDashboard';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
 import PriceOffsDashboard from './pages/price-offs/PriceOffsDashboard';
 import PriceOffsApprovalHub from './pages/price-offs/PriceOffsApprovalHub';
+import RevenueRecognitionSchedulerPage from './pages/admin/RevenueRecognitionSchedulerPage';
 import UserManagementPage from './pages/admin/UserManagementPage';
 import ProfilePage from './pages/profile/ProfilePage';
 import MasterDataLayout from './pages/master/MasterDataLayout';
@@ -61,14 +63,15 @@ export default function App() {
                       <Route path={ROUTES.AGREEMENT_CREATE} element={<AgreementCreatePage />} />
                     </Route>
 
-                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT]} />}>
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_CREATE, RIGHTS.DRAFT_EDIT_MY, RIGHTS.DRAFT_EDIT_ALL, RIGHTS.AGREEMENT_EDIT_MY, RIGHTS.AGREEMENT_EDIT_ALL]} />}>
                       <Route path={ROUTES.AGREEMENT_GROUP_WIZARD} element={<AgreementGroupWizardPage />} />
                       <Route path={ROUTES.AGREEMENT_EDIT} element={<AgreementEditPage />} />
                     </Route>
 
-                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL]} />}>
+                    <Route element={<RightRoute rights={[RIGHTS.AGREEMENT_VIEW_MY, RIGHTS.AGREEMENT_VIEW_ALL, RIGHTS.DRAFT_VIEW_MY, RIGHTS.DRAFT_VIEW_ALL]} />}>
                       <Route path={ROUTES.AGREEMENTS}>
                         <Route index element={<Navigate to="list" replace />} />
+                        <Route path="drafts" element={<AgreementListPage />} />
                         <Route path="groups" element={<AgreementListPage />} />
                         <Route path="list" element={<AgreementListPage />} />
                       </Route>
@@ -82,6 +85,7 @@ export default function App() {
 
                     <Route element={<RightRoute rights={[RIGHTS.COMMERCIAL_PAYOUT_CALCULATE]} />}>
                       <Route path={ROUTES.COMMERCIAL_PAYOUTS} element={<CommercialPayoutsPage />} />
+                      <Route path={ROUTES.REVENUE_RECOGNITION} element={<RevenueRecognitionDashboard />} />
                     </Route>
 
                     <Route element={<RightRoute rights={[RIGHTS.PRICE_OFF_MANAGE]} />}>
@@ -96,7 +100,11 @@ export default function App() {
                       <Route path={ROUTES.ADMIN_USERS} element={<UserManagementPage />} />
                     </Route>
 
-                    <Route element={<RoleRoute roles={['ADMIN']} />}>
+                    <Route element={<RightRoute rights={[RIGHTS.COMMERCIAL_PAYOUT_CALCULATE]} />}>
+                      <Route path={ROUTES.REVENUE_SCHEDULER} element={<RevenueRecognitionSchedulerPage />} />
+                    </Route>
+
+                    <Route element={<RightRoute rights={[RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE]} />}>
                       <Route path={ROUTES.MASTER} element={<MasterDataLayout />}>
                         <Route index element={<Navigate to={ROUTES.MASTER_AGREEMENT_GROUPS} replace />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_GROUPS} element={<AgreementGroupMasterPage />} />

@@ -25,8 +25,13 @@ export async function ensureDraftVersionForCommercial({
   }
 
   const payload = buildVersionedEditPayload({ requiresReapproval: true });
-  const { data } = await axiosInstance.post(
-    ENDPOINTS.AGREEMENT_VERSION_CREATE_EDIT(sourceId),
+  // Draft-first: init-edit returns existing draft or creates a new one
+  const { data: draft } = await axiosInstance.post(
+    ENDPOINTS.AGREEMENT_VERSION_INIT_EDIT(sourceId),
+  );
+  // Update the draft with the reapproval payload
+  const { data } = await axiosInstance.put(
+    ENDPOINTS.AGREEMENT_VERSION_UPDATE(draft.id),
     payload,
   );
 

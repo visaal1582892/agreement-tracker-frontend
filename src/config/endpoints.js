@@ -34,11 +34,19 @@ export const ENDPOINTS = {
   AGREEMENT_PARSE_STORES_TEMPLATE: `${BASE}/agreements/parse-stores/template`,
   AGREEMENT_BULK_TRANSFER: `${BASE}/agreements/bulk-transfer`,
   AGREEMENT_PRODUCT_SCOPE_COUNT: `${BASE}/agreements/product-scope/count`,
+  AGREEMENT_COMPUTED_PRODUCTS: (agreementVersionId) =>
+    `${BASE}/agreement-versions/${agreementVersionId}/computed-products`,
 
   // Agreement versions (ex-agreements)
   AGREEMENT_VERSION_BY_ID: (id) => `${BASE}/agreement-versions/${id}`,
   AGREEMENT_VERSION_UPDATE: (id) => `${BASE}/agreement-versions/${id}`,
-  AGREEMENT_VERSION_SUBMIT: (id) => `${BASE}/agreement-versions/${id}/submit`,
+  AGREEMENT_VERSION_DISCARD: (id) => `${BASE}/agreement-versions/${id}/discard`,
+  AGREEMENT_VERSION_INIT_EDIT: (id) => `${BASE}/agreement-versions/${id}/init-edit`,
+  AGREEMENT_VERSION_INIT_RENEW: (id) => `${BASE}/agreement-versions/${id}/init-renew`,
+  AGREEMENT_VERSION_INIT_REVISE: (id) => `${BASE}/agreement-versions/${id}/init-revise`,
+  AGREEMENT_VERSION_SUBMIT_EDIT: (id) => `${BASE}/agreement-versions/${id}/submit-edit`,
+  AGREEMENT_VERSION_SUBMIT_RENEW: (id) => `${BASE}/agreement-versions/${id}/submit-renew`,
+  AGREEMENT_VERSION_SUBMIT_REVISE: (id) => `${BASE}/agreement-versions/${id}/submit-revise`,
   AGREEMENT_VERSION_TRANSFER: (id) => `${BASE}/agreement-versions/${id}/transfer`,
   AGREEMENT_VERSION_REQUEST_TRANSFER: (id) => `${BASE}/agreement-versions/${id}/requests/transfer`,
   AGREEMENT_VERSION_REQUEST_TERMINATE: (id) => `${BASE}/agreement-versions/${id}/requests/terminate`,
@@ -50,7 +58,6 @@ export const ENDPOINTS = {
   REMINDERS_UNREAD: `${BASE}/reminders/unread`,
   REMINDER_MARK_READ: (id) => `${BASE}/reminders/${id}/read`,
   AGREEMENT_VERSION_TIMELINE: (id) => `${BASE}/agreement-versions/${id}/timeline`,
-  AGREEMENT_VERSION_CREATE_EDIT: (id) => `${BASE}/agreement-versions/${id}/versions`,
   AGREEMENT_VERSION_CLONE: (id) => `${BASE}/agreement-versions/${id}/clone`,
   AGREEMENT_VERSION_SLABS: (id) => `${BASE}/agreement-versions/${id}/slabs`,
   AGREEMENT_VERSION_SLAB: (agreementVersionId, slabId) =>
@@ -74,7 +81,7 @@ export const ENDPOINTS = {
   JBP_STRUCTURE: (id) => `${BASE}/agreement-versions/${id}/jbp-structure`,
   JBP_TIME_PERIODS: (id) => `${BASE}/agreement-versions/${id}/jbp-time-periods`,
   STORE_MAPPING_TEMPLATE: (id) => `${BASE}/agreement-versions/${id}/stores/template`,
-  STORE_MAPPING_UPLOAD: (id) => `${BASE}/agreement-versions/${id}/stores/upload`,
+  STORE_MAPPING_PARSE_STATELESS: (id) => `${BASE}/agreement-versions/${id}/stores/parse-stateless`,
   STORE_MAPPINGS: (id) => `${BASE}/agreement-versions/${id}/stores`,
 
   // Agreement groups
@@ -102,6 +109,7 @@ export const ENDPOINTS = {
   INTEGRATION_PRODUCTS: `${BASE}/integration/products`,
   INTEGRATION_VENDORS: `${BASE}/integration/vendors`,
   INTEGRATION_VENDORS_BY_IDS: `${BASE}/integration/vendors/by-ids`,
+  INTEGRATION_LOCATION_COUNTRIES: `${BASE}/integration/locations/countries`,
   INTEGRATION_LOCATION_STATES: `${BASE}/integration/locations/states`,
   INTEGRATION_LOCATION_CITIES: `${BASE}/integration/locations/cities`,
 

@@ -106,6 +106,14 @@ export async function calculateCommercialPayouts(agreementVersionId, request) {
   return data;
 }
 
+export async function previewRevenueRecognition(agreementVersionId, request) {
+  const { data } = await axiosInstance.post(
+    `/agreement-versions/${agreementVersionId}/revenue-recognition-preview`,
+    request,
+  );
+  return data;
+}
+
 export async function aggregatePurchases(agreementVersionId, request) {
   const { data } = await axiosInstance.post(
     ENDPOINTS.PURCHASE_AGGREGATION(agreementVersionId),

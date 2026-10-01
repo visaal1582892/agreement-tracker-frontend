@@ -4,8 +4,12 @@ export function hasSubsequentStepData(state) {
   const details = agreement?.details ?? {};
   const asset = agreement?.asset ?? {};
   const commercials = agreement?.commercials ?? {};
+  const hasCombinations = Array.isArray(productRules?.combinations) && productRules.combinations.some(
+    (c) => c?.manufacturerId || (c?.divisionRules?.length ?? 0) > 0 || (c?.productRules?.length ?? 0) > 0
+  );
   return Boolean(
     vendorIds?.length
+    || hasCombinations
     || productRules?.manufacturers?.length
     || productRules?.divisionRules?.length
     || productRules?.productRules?.length

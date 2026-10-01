@@ -19,12 +19,11 @@ export default function AssetPayoutFields({
 
   const handlePayoutModeChange = (nextMode) => {
     if (nextMode === 'FLAT') {
-      onUpdateAsset({ payoutMode: nextMode, flatPayout: asset?.flatPayout ?? '', assetPayoutPeriods: [] });
+      onUpdateAsset({ payoutMode: nextMode });
       return;
     }
     onUpdateAsset({
       payoutMode: nextMode,
-      flatPayout: '',
       assetPayoutPeriods: periods.length > 0 ? periods : [{ ...DEFAULT_PERIOD }],
     });
   };
@@ -57,6 +56,7 @@ export default function AssetPayoutFields({
                 size="small"
                 value={asset?.flatPayout ?? ''}
                 onChange={(e) => onUpdateAsset({ flatPayout: e.target.value })}
+                onInput={(e) => { e.target.value = e.target.value.slice(0, 13); }}
                 error={Boolean(fieldErrors.flatPayout)}
                 slotProps={{
                   input: {

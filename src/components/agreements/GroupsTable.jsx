@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Chip, IconButton, Menu, MenuItem } from '@mui/material';
-import { MoreVert } from '@mui/icons-material';
+import { Chip, IconButton, Tooltip } from '@mui/material';
+import { DeleteOutlined } from '@mui/icons-material';
 import DataTable from '../ui/DataTable';
 import { navigateToGroup } from '../../utils/agreementNavigation';
 
@@ -15,57 +15,23 @@ const formatDateTime = (d) =>
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }).format(new Date(d)) : '—';
 
-function RowActionsMenu({ row, canDelete, onDelete, navigate }) {
-  const [anchor, setAnchor] = useState(null);
-
-  const handleClose = (e) => {
-    e?.stopPropagation?.();
-    setAnchor(null);
-  };
-
-  const goToDetail = (e) => {
-    e.stopPropagation();
-    handleClose();
-    navigateToGroup(row, navigate);
-  };
-
-  const handleDelete = (e) => {
-    e.stopPropagation();
-    handleClose();
-    onDelete(row);
-  };
+function RowActionsMenu({ row, canDelete, onDelete }) {
+  if (!canDelete) return null;
 
   return (
-    <>
+    <Tooltip title="Delete Group">
       <IconButton
         size="small"
+        color="error"
         onClick={(e) => {
+          e.preventDefault();
           e.stopPropagation();
-          setAnchor(e.currentTarget);
+          onDelete(row);
         }}
       >
-        <MoreVert fontSize="small" />
+        <DeleteOutlined fontSize="small" />
       </IconButton>
-      <Menu
-        anchorEl={anchor}
-        open={Boolean(anchor)}
-        onClose={handleClose}
-        disableAutoFocusItem
-        disableEnforceFocus
-        onClick={(e) => e.stopPropagation()}
-        slotProps={{
-          backdrop: {
-            onMouseDown: (e) => e.stopPropagation(),
-            onClick: (e) => e.stopPropagation(),
-          },
-        }}
-      >
-        <MenuItem dense onClick={goToDetail}>View</MenuItem>
-        {canDelete && (
-          <MenuItem dense onClick={handleDelete}>Delete</MenuItem>
-        )}
-      </Menu>
-    </>
+    </Tooltip>
   );
 }
 
@@ -92,10 +58,10 @@ export default function GroupsTable({
       field: 'name',
       header: 'Group Name',
       minWidth: 180,
+      maxWidth: 250,
       sortable: false,
       filterType: 'text',
       filterKey: 'groupName',
-      render: (v) => v || '—',
     },
     {
       field: 'lastModifiedAt',
@@ -108,19 +74,19 @@ export default function GroupsTable({
       field: 'lastModifiedByName',
       header: 'Last Modified By',
       minWidth: 150,
+      maxWidth: 180,
       sortable: false,
       filterType: 'text',
       filterKey: 'lastModifiedBy',
-      render: (v) => v || '—',
     },
     {
       field: 'createdByName',
       header: 'Created By',
       minWidth: 150,
+      maxWidth: 180,
       sortable: false,
       filterType: 'text',
       filterKey: 'createdBy',
-      render: (v) => v || '—',
     },
     {
       field: 'isActive',

@@ -57,8 +57,8 @@ export function buildDraftEditPath(row, { step, mode = 'group' } = {}) {
       return remembered != null ? urlStepFromInternal(remembered) : undefined;
     })();
 
-  if (mode === 'single' && row.latestVersionId) {
-    return buildAgreementEditPath(row.latestVersionId, { step: rememberedStep });
+  if (mode === 'single' && row.id) {
+    return buildAgreementEditPath(row.id, { step: rememberedStep });
   }
 
   if (!row.agreementGroupId) return null;

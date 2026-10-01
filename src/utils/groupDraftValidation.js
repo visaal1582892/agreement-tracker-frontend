@@ -96,7 +96,7 @@ export async function loadGroupDraftReviewData(drafts) {
     // that can fail ownership/auth and falsely mark Asset drafts incomplete).
     const storeMappingCount = Array.isArray(version.storeMappings)
       ? version.storeMappings.length
-      : 0;
+      : (version.asset?.storeCount ?? 0);
 
     const gaps = getDraftDetailsGaps(version, {
       slabCount: slabs.length,

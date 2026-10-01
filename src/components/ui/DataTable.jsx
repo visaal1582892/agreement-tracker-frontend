@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import { Search } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
-import SearchableSelect from '../forms/SearchableSelect';
+import UnifiedSelect from '../forms/UnifiedSelect';
 import DateRangeFilter from '../forms/DateRangeFilter';
 import TruncatedText from './TruncatedText';
 
@@ -95,7 +95,7 @@ function renderCellContent(col, row, horizontalScroll) {
     return col.render(value, row);
   }
 
-  if (col.truncate === false || horizontalScroll) {
+  if (col.truncate === false || (horizontalScroll && !col.maxWidth)) {
     return value ?? '—';
   }
 
@@ -123,9 +123,11 @@ const columnSizeSx = (col, horizontalScroll) => {
 
   if (horizontalScroll) {
     const min = col.minWidth ?? col.width;
+    const max = col.maxWidth;
     return {
       whiteSpace: 'nowrap',
       ...(min != null ? { minWidth: min } : {}),
+      ...(max != null ? { maxWidth: max } : {}),
     };
   }
 
@@ -307,7 +309,7 @@ export default function DataTable({
                         </FormControl>
                       )}
                       {col.filterType === 'searchable-select' && (
-                        <SearchableSelect
+                        <UnifiedSelect
                           value={resolveSearchableValue(col, key)}
                           onChange={(opt) => onFilterChange(key, opt?.id ?? '')}
                           options={col.filterOptions || []}

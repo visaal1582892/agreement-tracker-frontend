@@ -2,6 +2,7 @@ import axios from 'axios';
 import { API_BASE } from '../config/endpoints';
 import store from '../store';
 import { logout } from '../store/slices/authSlice';
+import { enqueueSnackbar } from 'notistack';
 
 export const SESSION_TIMEOUT_FLAG = 'sessionTimedOut';
 
@@ -22,35 +23,7 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
-function isSessionTimeoutError(error) {
-  const status = error.response?.status;
-  const token = localStorage.getItem('token');
-  const requestUrl = error.config?.url || '';
 
-  if (!token || requestUrl.includes('/auth/login')) {
-    return false;
-  }
-
-  if (status === 401) {
-    return true;
-  }
-
-  if (status === 403) {
-    const message = (error.response?.data?.message || '').toLowerCase();
-    const businessForbidden = message.includes('owner')
-      || message.includes('permission')
-      || message.includes('not authorized');
-    if (businessForbidden) {
-      return false;
-    }
-    return message.includes('access denied')
-      || message.includes('forbidden')
-      || message.includes('expired')
-      || !message;
-  }
-
-  return false;
-}
 
 function handleSessionTimeout() {
   store.dispatch(logout());
@@ -58,12 +31,24 @@ function handleSessionTimeout() {
   window.location.href = '/login';
 }
 
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (isSessionTimeoutError(error)) {
-      handleSessionTimeout();
+    const status = error.response?.status;
+    const requestUrl = error.config?.url || '';
+    
+    // Ignore login requests
+    if (requestUrl.includes('/auth/login')) {
+      return Promise.reject(error);
     }
+
+    if (status === 401) {
+      handleSessionTimeout();
+    } else if (status === 403) {
+      enqueueSnackbar('You do not have permission to perform this action.', { variant: 'error' });
+    }
+
     return Promise.reject(error);
   },
 );

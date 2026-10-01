@@ -99,10 +99,11 @@ export default function DashboardPage() {
   const [expiring, setExpiring] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const canViewAgreements = hasAnyRight([RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL]);
+  const canViewAgreements = hasAnyRight([RIGHTS.AGREEMENT_VIEW_MY, RIGHTS.AGREEMENT_VIEW_ALL, RIGHTS.DRAFT_VIEW_MY, RIGHTS.DRAFT_VIEW_ALL]);
   const canViewGlobalAgreements = hasRight(RIGHTS.AGREEMENT_VIEW_ALL);
+  const canViewAllDrafts = hasRight(RIGHTS.DRAFT_VIEW_ALL);
   const canCreateAgreement = hasRight(RIGHTS.AGREEMENT_CREATE);
-  const canEditAgreement = hasRight(RIGHTS.AGREEMENT_EDIT);
+  const canEditAgreement = hasAnyRight([RIGHTS.AGREEMENT_EDIT_MY, RIGHTS.AGREEMENT_EDIT_ALL, RIGHTS.DRAFT_EDIT_MY, RIGHTS.DRAFT_EDIT_ALL]);
   const canApproveAgreement = hasRight(RIGHTS.AGREEMENT_APPROVE);
   const canViewPriceOffs = hasRight(RIGHTS.PRICE_OFF_VIEW);
   const canManagePriceOffs = hasRight(RIGHTS.PRICE_OFF_MANAGE);
@@ -114,9 +115,14 @@ export default function DashboardPage() {
 
   const shouldFetchStats = hasAnyRight([
     RIGHTS.AGREEMENT_CREATE,
-    RIGHTS.AGREEMENT_EDIT,
+    RIGHTS.DRAFT_EDIT_MY,
+    RIGHTS.DRAFT_EDIT_ALL,
+    RIGHTS.AGREEMENT_EDIT_MY,
+    RIGHTS.AGREEMENT_EDIT_ALL,
     RIGHTS.AGREEMENT_APPROVE,
-    RIGHTS.AGREEMENT_VIEW,
+    RIGHTS.DRAFT_VIEW_MY,
+    RIGHTS.DRAFT_VIEW_ALL,
+    RIGHTS.AGREEMENT_VIEW_MY,
     RIGHTS.AGREEMENT_VIEW_ALL,
     RIGHTS.PRICE_OFF_VIEW,
     RIGHTS.PRICE_OFF_APPROVE,
@@ -128,14 +134,14 @@ export default function DashboardPage() {
   const kpiWidgets = useMemo(() => {
     const widgets = [];
 
-    if (hasAnyRight([RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT])) {
+    if (hasAnyRight([RIGHTS.AGREEMENT_CREATE, RIGHTS.AGREEMENT_EDIT_MY, RIGHTS.AGREEMENT_EDIT_ALL, RIGHTS.DRAFT_EDIT_MY, RIGHTS.DRAFT_EDIT_ALL, RIGHTS.DRAFT_VIEW_MY, RIGHTS.DRAFT_VIEW_ALL])) {
       widgets.push({
         key: 'drafts',
-        title: 'My Drafts',
+        title: canViewAllDrafts ? 'Drafts' : 'My Drafts',
         value: stats?.draftsCount ?? 0,
         icon: <EditNote />,
         color: '#6366F1',
-        subtitle: 'Unsubmitted agreements',
+        subtitle: canViewAllDrafts ? 'All unsubmitted agreements' : 'Unsubmitted agreements',
       });
     }
 

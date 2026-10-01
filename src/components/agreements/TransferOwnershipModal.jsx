@@ -7,7 +7,7 @@ import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { RIGHTS } from '../../config/rights';
 import { useAuth } from '../../hooks/useAuth';
-import SearchableSelect from '../forms/SearchableSelect';
+import UnifiedSelect from '../forms/UnifiedSelect';
 
 export default function TransferOwnershipModal({
   open,
@@ -81,7 +81,7 @@ export default function TransferOwnershipModal({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Reassign {agreementLabel || 'this agreement'} to a new Account Manager.
         </Typography>
-        <SearchableSelect
+        <UnifiedSelect
           label="New Owner"
           placeholder="Search users…"
           options={users}

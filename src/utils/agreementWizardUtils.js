@@ -87,10 +87,10 @@ function buildAssetPayload(asset) {
   const payoutMode = asset.payoutMode || 'FLAT';
   const assetPayoutPeriods = payoutMode === 'PER_STORE'
     ? (asset.assetPayoutPeriods ?? [])
-      .filter((period) => period.periodMonths !== '' && period.payoutPerStore !== '' && period.payoutPerStore != null)
+      .filter((period) => period.periodMonths !== '' || (period.payoutPerStore !== '' && period.payoutPerStore != null))
       .map((period) => ({
-        periodMonths: Number(period.periodMonths),
-        payoutPerStore: period.payoutPerStore,
+        periodMonths: period.periodMonths !== '' ? Number(period.periodMonths) : null,
+        payoutPerStore: (period.payoutPerStore !== '' && period.payoutPerStore != null) ? period.payoutPerStore : null,
       }))
     : null;
 
@@ -147,34 +147,37 @@ export function buildAgreementDetailsPayload(agreement, { includeDocuments = fal
     scrubbedDetails.incomeTypeName,
   );
   const detailsPayload = {
-      incomeTypeId: scrubbedDetails.incomeTypeId || null,
-      agreementTypeId: scrubbedDetails.agreementTypeId || null,
-      startDate: formatLocalDateString(scrubbedDetails.startDate),
-      expiryDate: formatLocalDateString(scrubbedDetails.expiryDate),
-      notes: scrubbedDetails.notes || null,
-      // Asset Rentals: storeIds define geography — scrub partner geo to avoid conflicting state.
-      geographyMode: isAssetRental ? GEOGRAPHY_MODE.ALL : (scrubbedDetails.geographyMode || 'MIXED'),
-      partnerStates: isAssetRental
-        ? []
-        : (Array.isArray(scrubbedDetails.partnerStates) ? scrubbedDetails.partnerStates : []),
-      partnerCities: isAssetRental
-        ? []
-        : (Array.isArray(scrubbedDetails.partnerCities) ? scrubbedDetails.partnerCities : []),
-      adhocSubType: scrubbedDetails.adhocSubType || null,
-      quantityCap: scrubbedDetails.quantityCap !== '' && scrubbedDetails.quantityCap != null
-        ? scrubbedDetails.quantityCap
-        : null,
-      invoiceVendorId: scrubbedDetails.invoiceVendorId || null,
-      payoutBufferDays: scrubbedDetails.payoutBufferDays !== '' && scrubbedDetails.payoutBufferDays != null
-        ? Number(scrubbedDetails.payoutBufferDays)
-        : null,
-      leadTimeBasis: scrubbedDetails.leadTimeBasis || null,
-      invoiceGenerationLeadTime: scrubbedDetails.invoiceGenerationLeadTime !== ''
-        && scrubbedDetails.invoiceGenerationLeadTime != null
-        ? Number(scrubbedDetails.invoiceGenerationLeadTime)
-        : null,
-      calculationBasis: scrubbedDetails.calculationBasis || CALCULATION_BASIS.VENDOR_INVOICE,
-      paymentRealizationType: scrubbedDetails.paymentRealizationType || PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE,
+    incomeTypeId: scrubbedDetails.incomeTypeId || null,
+    agreementTypeId: scrubbedDetails.agreementTypeId || null,
+    startDate: formatLocalDateString(scrubbedDetails.startDate),
+    expiryDate: formatLocalDateString(scrubbedDetails.expiryDate),
+    notes: scrubbedDetails.notes || null,
+    // Asset Rentals: storeIds define geography — scrub partner geo to avoid conflicting state.
+    geographyMode: isAssetRental ? GEOGRAPHY_MODE.ALL : (scrubbedDetails.geographyMode || 'MIXED'),
+    partnerStates: isAssetRental
+      ? []
+      : (Array.isArray(scrubbedDetails.partnerStates) ? scrubbedDetails.partnerStates : []),
+    partnerCities: isAssetRental
+      ? []
+      : (Array.isArray(scrubbedDetails.partnerCities) ? scrubbedDetails.partnerCities : []),
+    locations: isAssetRental
+      ? []
+      : (Array.isArray(scrubbedDetails.locations) ? scrubbedDetails.locations : []),
+    adhocSubType: scrubbedDetails.adhocSubType || null,
+    quantityCap: scrubbedDetails.quantityCap !== '' && scrubbedDetails.quantityCap != null
+      ? scrubbedDetails.quantityCap
+      : null,
+    invoiceVendorId: scrubbedDetails.invoiceVendorId || null,
+    payoutBufferDays: scrubbedDetails.payoutBufferDays !== '' && scrubbedDetails.payoutBufferDays != null
+      ? Number(scrubbedDetails.payoutBufferDays)
+      : null,
+    leadTimeBasis: scrubbedDetails.leadTimeBasis || null,
+    invoiceGenerationLeadTime: scrubbedDetails.invoiceGenerationLeadTime !== ''
+      && scrubbedDetails.invoiceGenerationLeadTime != null
+      ? Number(scrubbedDetails.invoiceGenerationLeadTime)
+      : null,
+    calculationBasis: scrubbedDetails.calculationBasis || CALCULATION_BASIS.VENDOR_INVOICE,
+    paymentRealizationType: scrubbedDetails.paymentRealizationType || PAYMENT_REALIZATION_TYPE.DIRECT_PAYMENT_INVOICE,
   };
   if (includeDocuments) {
     detailsPayload.documents = mapDocumentsToApiPayload(scrubbedDetails.documents);
@@ -218,7 +221,7 @@ export function buildStep1CreatePayload(state) {
   };
 }
 
-export function buildStep1UpdatePayload(state, { requiresReapproval = false, includeDocuments = false } = {}) {
+export function buildUpdateDraftPayload(state, { requiresReapproval = false, includeDocuments = false } = {}) {
   const { details, commercials, asset } = buildAgreementDetailsPayload(state.agreement, { includeDocuments });
   const payload = {
     agreementGroupId: state.agreementGroupId || null,
@@ -229,6 +232,7 @@ export function buildStep1UpdatePayload(state, { requiresReapproval = false, inc
     details,
     commercials,
     asset,
+    commercialData: buildCommercialDataSubmitPayload(state.commercialData, commercials ?? {}),
   };
   if (requiresReapproval) {
     payload.requiresReapproval = true;
@@ -236,9 +240,9 @@ export function buildStep1UpdatePayload(state, { requiresReapproval = false, inc
   return payload;
 }
 
-export function buildSanitizedStep1UpdatePayload(state, options = {}) {
+export function buildSanitizedUpdateDraftPayload(state, options = {}) {
   const includeDocuments = Boolean(options.includeDocuments);
-  const payload = buildStep1UpdatePayload(state, { ...options, includeDocuments });
+  const payload = buildUpdateDraftPayload(state, { ...options, includeDocuments });
   const { details } = state.agreement ?? {};
   const ctx = resolveWizardIncomeContext(state, options.sourceAgreement, options.incomeTypes ?? []);
   return sanitizeAgreementPayload(
@@ -256,7 +260,7 @@ export function buildRevisionSubmitPayload(state, {
   sourceAgreement = null,
   incomeTypes = [],
 } = {}) {
-  const sanitized = buildSanitizedStep1UpdatePayload(state, {
+  const sanitized = buildSanitizedUpdateDraftPayload(state, {
     includeDocuments: true,
     sourceAgreement,
     incomeTypes,
@@ -287,11 +291,14 @@ function buildCommercialDataSubmitPayload(commercialData, commercials = {}) {
   const hasStoreMappingsField = Array.isArray(commercialData.storeMappings);
   const mappedStores = hasStoreMappingsField
     ? commercialData.storeMappings.map((s) => ({
-      storeId: s.storeId,
-      storeCode: s.storeCode ?? null,
-      storeName: s.storeName ?? null,
-      stateId: s.stateId ?? null,
-      stateName: s.stateName ?? null,
+      storeId: s.storeId || s.storeCode, // Fallbacks for resilience
+      name: s.name || s.storeName || null,
+      address: s.address ?? null,
+      pinCode: s.pinCode ?? null,
+      region1: s.region1 || s.country || null,
+      region2: s.region2 || s.state || s.stateName || null,
+      region3: s.region3 || s.city || null,
+      isCustom: Boolean(s.isCustom),
     }))
     : null;
 
@@ -406,7 +413,9 @@ export function collectFoundationalStepErrors(state, {
   sourceExpiryDate = null,
 } = {}) {
   const fieldErrors = {};
-  if (!state.agreementGroupId && !state.newAgreementGroupName?.trim()) {
+  const isEditing = state.agreement?.id?.startsWith('agr-edit-');
+
+  if (!isEditing && !state.agreementGroupId && !state.newAgreementGroupName?.trim()) {
     fieldErrors.agreementGroup = 'Select or enter an agreement group';
   }
   const { details } = state.agreement ?? {};
@@ -515,25 +524,20 @@ function collectSettlementRoutingFieldErrors(details, isAssetRental) {
 
 function hasPartnerLocation(details) {
   if (details?.geographyMode === GEOGRAPHY_MODE.ALL) return true;
+  const locs = Array.isArray(details?.locations) ? details.locations : [];
+  if (locs.length > 0) return true;
   const states = Array.isArray(details?.partnerStates) ? details.partnerStates : [];
   const cities = Array.isArray(details?.partnerCities) ? details.partnerCities : [];
-  if (!states.length && !cities.length) return false;
-  const wholeStateCodes = new Set(states.map((s) => s?.code).filter(Boolean));
-  return !cities.some((c) => c?.stateCode && wholeStateCodes.has(c.stateCode));
+  return states.length > 0 || cities.length > 0;
 }
 
 function applyPartnerLocationFieldErrors(fieldErrors, details, incomeLabel) {
   if (details?.geographyMode === GEOGRAPHY_MODE.ALL) return;
+  const locs = Array.isArray(details?.locations) ? details.locations : [];
   const states = Array.isArray(details?.partnerStates) ? details.partnerStates : [];
   const cities = Array.isArray(details?.partnerCities) ? details.partnerCities : [];
-  if (!states.length && !cities.length) {
-    fieldErrors.partnerState = `Select at least one state or city for ${incomeLabel}`;
-    return;
-  }
-  const wholeStateCodes = new Set(states.map((s) => s?.code).filter(Boolean));
-  const conflict = cities.find((c) => c?.stateCode && wholeStateCodes.has(c.stateCode));
-  if (conflict) {
-    fieldErrors.partnerCity = `Cannot select both whole state and cities for ${conflict.stateName || conflict.stateCode}`;
+  if (!locs.length && !states.length && !cities.length) {
+    fieldErrors.partnerState = `Select at least one country, state, or city for ${incomeLabel}`;
   }
 }
 export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAgreement = null) {
@@ -562,15 +566,13 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
     fieldErrors.supplyVendors = 'Select at least one supply vendor';
   }
 
-  if (!isAssetRental) {
-    const documents = details.documents ?? [];
-    const uploadsInProgress = documents.some((doc) => doc.uploadStatus === 'uploading');
-    const uploadedDocuments = documents.filter((doc) => doc.fileUrl && doc.uploadStatus !== 'error');
-    if (uploadsInProgress) {
-      fieldErrors.documents = 'Wait for document uploads to finish';
-    } else if (!uploadedDocuments.length) {
-      fieldErrors.documents = 'At least one document is required';
-    }
+  const documents = details.documents ?? [];
+  const uploadsInProgress = documents.some((doc) => doc.uploadStatus === 'uploading');
+  const uploadedDocuments = documents.filter((doc) => doc.fileUrl && doc.uploadStatus !== 'error');
+  if (uploadsInProgress) {
+    fieldErrors.documents = 'Wait for document uploads to finish';
+  } else if (!uploadedDocuments.length) {
+    fieldErrors.documents = 'At least one document is required';
   }
 
   if (isAssetRental) {
@@ -597,15 +599,24 @@ export function collectConfigurationStepErrors(state, incomeTypes = [], sourceAg
     applyPartnerLocationFieldErrors(fieldErrors, details, 'Commercial Contracts');
   }
 
+  const hasManufacturerCombination =
+    Array.isArray(productRules?.combinations) &&
+    productRules.combinations.length > 0 &&
+    productRules.combinations.some((c) => c?.manufacturerId != null && c?.manufacturerId !== '');
+
+  const hasManufacturer =
+    hasManufacturerCombination ||
+    Boolean(productRules?.manufacturers?.length || productRules?.manufacturerIds?.length);
+
   if (isAdHoc) {
-    if (!productRules?.manufacturers?.length) {
+    if (!hasManufacturer) {
       fieldErrors.products = 'Select at least one manufacturer';
     }
     Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
     return fieldErrors;
   }
 
-  if (!productRules?.manufacturers?.length) {
+  if (!hasManufacturer) {
     fieldErrors.products = 'Select at least one manufacturer';
   }
   Object.assign(fieldErrors, collectSettlementRoutingFieldErrors(details, false));
@@ -718,6 +729,8 @@ export function collectCommercialStructureStepErrors(state, incomeTypes = [], so
       );
       if (validPeriods.length === 0) {
         fieldErrors.assetPayoutPeriods = 'Add at least one payout period row';
+      } else if (validPeriods.some((p) => Number(p.payoutPerStore) > 999999999999)) {
+        fieldErrors.assetPayoutPeriods = 'Amount cannot exceed 999,999,999,999';
       } else {
         const durationEval = evaluateAssetPayoutDuration({
           payoutMode: 'PER_STORE',
@@ -731,6 +744,8 @@ export function collectCommercialStructureStepErrors(state, incomeTypes = [], so
       }
     } else if (!asset?.flatPayout || Number(asset.flatPayout) <= 0) {
       fieldErrors.flatPayout = 'Enter flat payout amount';
+    } else if (Number(asset.flatPayout) > 999999999999) {
+      fieldErrors.flatPayout = 'Amount cannot exceed 999,999,999,999';
     }
     return fieldErrors;
   }
@@ -772,6 +787,8 @@ export function collectCommercialStructureStepErrors(state, incomeTypes = [], so
   if (enableFlat) {
     if (!commercials.commercialValue) {
       fieldErrors.commercialValue = 'Flat baseline value is required';
+    } else if ((commercials.flatValueType === 'PERCENTAGE' || commercials.valueType === 'PERCENTAGE') && Number(commercials.commercialValue) > 100) {
+      fieldErrors.commercialValue = 'Percentage cannot exceed 100%';
     }
     if (!resolveFlatBaselineFrequency(commercials, { adhocSubType: state.agreement?.details?.adhocSubType })) {
       fieldErrors.flatBaselineFrequency = 'Flat baseline frequency is required';
@@ -975,6 +992,7 @@ export function buildContractDetailsSnapshot(agreement) {
     geographyMode: agreement.geographyMode ?? agreement.details?.geographyMode ?? 'MIXED',
     partnerStates: agreement.partnerStates ?? agreement.details?.partnerStates ?? [],
     partnerCities: agreement.partnerCities ?? agreement.details?.partnerCities ?? [],
+    locations: agreement.locations ?? agreement.details?.locations ?? [],
   };
 }
 
@@ -1019,7 +1037,7 @@ function validateCommercialStructureBase(
 }
 
 export function resolveHighestAccessibleStep(state, sourceAgreement = null, incomeTypes = []) {
-  const noop = () => {};
+  const noop = () => { };
   if (!validateStep1Fields(state, noop)) return 0;
   if (!validateCommercialConfigurationStep(state, noop, incomeTypes, sourceAgreement)) return 1;
   if (!validateCommercialStructureStepSync(state, noop, incomeTypes, sourceAgreement)) return 2;

@@ -3,7 +3,7 @@ import { Alert, Grid, TextField, Typography } from '@mui/material';
 import axiosInstance from '../../../api/axiosInstance';
 import { ENDPOINTS } from '../../../config/endpoints';
 import { normalizePageResponse } from '../../../utils/pageResponse';
-import SearchableSelect from '../../../components/forms/SearchableSelect';
+import UnifiedSelect from '../../../components/forms/UnifiedSelect';
 import WizardSectionCard from '../../../components/wizard/WizardSectionCard';
 
 export default function Step1GroupSetup({ state, updateFields, groupFieldsLocked = false }) {
@@ -20,7 +20,7 @@ export default function Step1GroupSetup({ state, updateFields, groupFieldsLocked
         params: {
           ...(query?.trim() ? { groupName: query.trim() } : {}),
           isActive: true,
-          size: 50,
+          size: 30,
           page: 0,
         },
       });
@@ -97,10 +97,11 @@ export default function Step1GroupSetup({ state, updateFields, groupFieldsLocked
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }} sx={{ overflow: 'visible' }}>
-          <SearchableSelect
+          <UnifiedSelect
             label="Agreement Group"
             placeholder="Search existing groups…"
-            isMulti={false}
+            multiple={false}
+            showOptionsOnEmpty
             options={groupOptions}
             value={createNewGroup ? null : selectedGroup}
             onChange={handleGroupChange}

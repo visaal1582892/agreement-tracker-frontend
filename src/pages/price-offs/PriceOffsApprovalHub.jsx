@@ -49,7 +49,7 @@ export default function PriceOffsApprovalHub() {
   const [campaigns, setCampaigns] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [detailOpen, setDetailOpen] = useState(false);

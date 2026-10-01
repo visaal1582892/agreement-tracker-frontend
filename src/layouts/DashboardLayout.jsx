@@ -9,7 +9,7 @@ import {
 import {
   SpaceDashboardOutlined, DescriptionOutlined,   CheckCircleOutlined, Search,
   Logout, Person, ExpandMore, StorageOutlined, ManageAccountsOutlined,
-  LocalOfferOutlined, CalculateOutlined,
+  LocalOfferOutlined, CalculateOutlined, AdminPanelSettingsOutlined
 } from '@mui/icons-material';
 import NotificationBell from '../components/layout/NotificationBell';
 import { alpha } from '@mui/material/styles';
@@ -25,13 +25,15 @@ const DRAWER_COLLAPSED = 72;
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: SpaceDashboardOutlined, path: ROUTES.DASHBOARD, rights: [RIGHTS.DASHBOARD_VIEW] },
-  { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS_LIST, rights: [RIGHTS.AGREEMENT_VIEW, RIGHTS.AGREEMENT_VIEW_ALL] },
+  { label: 'Agreements', icon: DescriptionOutlined, path: ROUTES.AGREEMENTS_LIST, rights: [RIGHTS.AGREEMENT_VIEW_MY, RIGHTS.AGREEMENT_VIEW_ALL, RIGHTS.DRAFT_VIEW_MY, RIGHTS.DRAFT_VIEW_ALL] },
   { label: 'Approvals', icon: CheckCircleOutlined, path: ROUTES.APPROVALS, rights: [RIGHTS.AGREEMENT_APPROVE] },
   { label: 'Payout Calculator', icon: CalculateOutlined, path: ROUTES.COMMERCIAL_PAYOUTS, rights: [RIGHTS.COMMERCIAL_PAYOUT_CALCULATE] },
+  { label: 'Revenue Dashboard', icon: CalculateOutlined, path: ROUTES.REVENUE_RECOGNITION, rights: [RIGHTS.COMMERCIAL_PAYOUT_CALCULATE] },
   // TODO: uncomment when price-offs is ready
   { label: 'Price Offs', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS, rights: [RIGHTS.PRICE_OFF_MANAGE] },
   { label: 'Price Off Approvals', icon: LocalOfferOutlined, path: ROUTES.PRICE_OFFS_APPROVALS, rights: [RIGHTS.PRICE_OFF_APPROVE] },
-  { label: 'Users', icon: ManageAccountsOutlined, path: ROUTES.ADMIN_USERS, rights: [RIGHTS.ADMIN_USERS] },
+  { label: 'Users', icon: ManageAccountsOutlined, path: ROUTES.ADMIN_USERS, rights: [RIGHTS.USER_MANAGE] },
+  { label: 'Revenue Scheduler', icon: AdminPanelSettingsOutlined, path: ROUTES.REVENUE_SCHEDULER, rights: [RIGHTS.COMMERCIAL_PAYOUT_CALCULATE] },
   { label: 'Master Data', icon: StorageOutlined, path: ROUTES.MASTER, masterAccess: true },
 ];
 

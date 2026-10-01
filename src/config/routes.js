@@ -6,6 +6,7 @@ export const ROUTES = {
   AGREEMENTS: '/agreements',
   AGREEMENTS_GROUPS: '/agreements/groups',
   AGREEMENTS_LIST: '/agreements/list',
+  AGREEMENTS_DRAFTS: '/agreements/drafts',
   AGREEMENT_GROUP_DETAIL: '/agreements/groups/:groupId',
   AGREEMENT_CREATE: '/agreements/new',
   AGREEMENT_GROUP_WIZARD: '/agreements/wizard',
@@ -15,11 +16,13 @@ export const ROUTES = {
   APPROVALS: '/approvals',
 
   COMMERCIAL_PAYOUTS: '/commercial-payouts',
+  REVENUE_RECOGNITION: '/revenue-recognition',
 
   PRICE_OFFS: '/price-offs',
   PRICE_OFFS_APPROVALS: '/price-offs/approvals',
 
   ADMIN_USERS: '/admin/users',
+  REVENUE_SCHEDULER: '/admin/revenue-scheduler',
   PROFILE: '/profile',
 
   MASTER: '/master',

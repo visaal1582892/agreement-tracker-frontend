@@ -41,6 +41,7 @@ export default function ConfigurationStep({
   fieldErrors = {},
   onClearFieldError,
   vendorsLocked = false,
+  step2Key,
 }) {
   const [incomeTypes, setIncomeTypes] = useState([]);
   const details = agreement?.details ?? {};
@@ -169,6 +170,7 @@ export default function ConfigurationStep({
             {!isAssetRental && !isAdHoc && (
               <Box sx={{ mt: 3 }}>
                 <Step2Products
+                  key={step2Key}
                   state={state}
                   updateProductRules={updateProductRules}
                   error={mergedFieldErrors.products}
@@ -190,7 +192,7 @@ export default function ConfigurationStep({
                   onUpdateDetails={onUpdateDetails}
                   fieldErrors={mergedFieldErrors}
                   onClearFieldError={onClearFieldError}
-                  allowAllLocations={isDataFee}
+                  isDataFee={isDataFee}
                 />
               )}
             </CollapsibleSection>

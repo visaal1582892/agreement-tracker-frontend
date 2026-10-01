@@ -10,7 +10,7 @@ import { ENDPOINTS } from '../../config/endpoints';
 import { ROUTES } from '../../config/routes';
 import { fetchGroupDraftAgreements, submitAgreementGroupForApproval } from '../../api/agreementGroupApi';
 import WizardLayout from '../../layouts/WizardLayout';
-import { useAgreementWizard } from '../../hooks/useAgreementWizard';
+import { useAgreementWizard, mapPersistedAgreementFields } from '../../hooks/useAgreementWizard';
 import { useAuth } from '../../hooks/useAuth';
 import { resolveAgreementListScope } from '../../utils/authUtils';
 import {
@@ -18,7 +18,7 @@ import {
   buildGroupWizardPath,
 } from '../../utils/agreementNavigation';
 import {
-  buildSanitizedStep1UpdatePayload,
+  buildSanitizedUpdateDraftPayload,
   fetchSlabCountForVersion,
   resolveHighestAccessibleStep,
   internalStepFromUrl,
@@ -109,6 +109,7 @@ export default function AgreementGroupWizardPage() {
     updateAgreementDetails,
     updateAgreementAsset,
     updateAgreementCommercials,
+    updateCommercialData,
     reset,
     hydrateFromEdit,
     restoreFromPersisted,
@@ -139,6 +140,74 @@ export default function AgreementGroupWizardPage() {
 
   const loadedVersionRef = useRef(null);
   const persistedSlabCountRef = useRef(null);
+
+  const getBlendedStateForStep = useCallback((stepToSave, currentState, sourceData, isSanitized) => {
+    if (isSanitized || !sourceData) return currentState;
+    const sourceState = mapPersistedAgreementFields(sourceData, persistedSlabCountRef.current);
+    
+    if (stepToSave === 0) {
+      return {
+        ...sourceState,
+        revisionType: currentState.revisionType,
+        agreementName: currentState.agreementName,
+        agreement: {
+          ...sourceState.agreement,
+          details: {
+            ...sourceState.agreement.details,
+            incomeTypeId: currentState.agreement.details.incomeTypeId,
+            incomeTypeName: currentState.agreement.details.incomeTypeName,
+            agreementTypeId: currentState.agreement.details.agreementTypeId,
+            startDate: currentState.agreement.details.startDate,
+            expiryDate: currentState.agreement.details.expiryDate,
+            notes: currentState.agreement.details.notes,
+          }
+        }
+      };
+    }
+    if (stepToSave === 1) {
+      return {
+        ...sourceState,
+        agreementGroupId: currentState.agreementGroupId,
+        agreementGroupName: currentState.agreementGroupName,
+        newAgreementGroupName: currentState.newAgreementGroupName,
+        vendorIds: currentState.vendorIds,
+        vendors: currentState.vendors,
+        productRules: currentState.productRules,
+        agreement: {
+          ...sourceState.agreement,
+          details: {
+            ...sourceState.agreement.details,
+            geographyMode: currentState.agreement.details.geographyMode,
+            partnerStates: currentState.agreement.details.partnerStates,
+            partnerCities: currentState.agreement.details.partnerCities,
+            locations: currentState.agreement.details.locations,
+            documents: currentState.agreement.details.documents,
+            adhocSubType: currentState.agreement.details.adhocSubType,
+            quantityCap: currentState.agreement.details.quantityCap,
+            invoiceVendorId: currentState.agreement.details.invoiceVendorId,
+            payoutBufferDays: currentState.agreement.details.payoutBufferDays,
+            leadTimeBasis: currentState.agreement.details.leadTimeBasis,
+            invoiceGenerationLeadTime: currentState.agreement.details.invoiceGenerationLeadTime,
+            calculationBasis: currentState.agreement.details.calculationBasis,
+            paymentRealizationType: currentState.agreement.details.paymentRealizationType,
+          },
+          asset: currentState.agreement.asset,
+        }
+      };
+    }
+    if (stepToSave === 2) {
+      return {
+        ...sourceState,
+        commercialData: currentState.commercialData,
+        agreement: {
+          ...sourceState.agreement,
+          commercials: currentState.agreement.commercials,
+          asset: currentState.agreement.asset,
+        }
+      };
+    }
+    return currentState;
+  }, []);
   const agreementStepsRef = useRef(agreementSteps);
   const stateRef = useRef(state);
   const switchingDraftRef = useRef(false);
@@ -277,7 +346,13 @@ export default function AgreementGroupWizardPage() {
         urlStepParam: forcedInternalStep != null ? urlStepFromInternal(forcedInternalStep) : searchParams.get('step'),
         isActiveAgreement: sameAgreementId(agreementId, parsedActiveAgreementId),
       });
-      restoreFromPersisted(loaded, { slabCount, step: resolvedStep });
+      restoreFromPersisted(
+        {
+          ...loaded,
+          agreementGroupId: loaded.agreementGroupId || parsedGroupId,
+        },
+        { slabCount, step: resolvedStep }
+      );
       applyWizardStep(agreementId, resolvedStep);
       loadedVersionRef.current = loaded.id;
       setBaselineIncomeTypeId(loaded.incomeTypeId ?? null);
@@ -475,7 +550,9 @@ export default function AgreementGroupWizardPage() {
     if (!deleteTargetId) return;
     setDeletingDraft(true);
     try {
-      await axiosInstance.delete(ENDPOINTS.AGREEMENT_DELETE(deleteTargetId));
+      const match = draftTabs.find(t => t.agreementId === deleteTargetId);
+      const versionId = match ? match.latestVersionId : deleteTargetId;
+      await axiosInstance.delete(ENDPOINTS.AGREEMENT_VERSION_DISCARD(versionId));
       const wasActive = sameAgreementId(deleteTargetId, parsedActiveAgreementId);
       const previousSorted = sortDraftsByCreatedAt(groupDrafts);
       const deletedIndex = previousSorted.findIndex((row) => sameAgreementId(row.id, deleteTargetId));
@@ -564,7 +641,7 @@ export default function AgreementGroupWizardPage() {
   }, []);
 
   const buildUpdatePayload = useCallback(
-    () => buildSanitizedStep1UpdatePayload(state, { sourceAgreement }),
+    () => buildSanitizedUpdateDraftPayload(state, { sourceAgreement }),
     [state, sourceAgreement],
   );
 
@@ -581,7 +658,7 @@ export default function AgreementGroupWizardPage() {
     const includeDocuments = validateStep2 || validateCommercialStructure;
     const { data } = await axiosInstance.put(
       ENDPOINTS.AGREEMENT_VERSION_UPDATE(draftAgreementId),
-      buildSanitizedStep1UpdatePayload(effectiveState, { sourceAgreement, includeDocuments }),
+      buildSanitizedUpdateDraftPayload(effectiveState, { sourceAgreement, includeDocuments }),
       { params: { validateStep1, validateStep2, validateCommercialStructure } },
     );
     setSourceAgreement(data);
@@ -596,11 +673,12 @@ export default function AgreementGroupWizardPage() {
     if (!validateStep1Fields(state, enqueueSnackbar)) return;
     const resetState = maybeSanitizeClassificationChange();
     const effectiveState = resetState ?? state;
+    const blendedState = getBlendedStateForStep(0, effectiveState, sourceAgreement, Boolean(resetState));
     setSavingDraft(true);
     try {
       await persistDraft({
         validateStep1: true,
-        stateOverride: resetState ?? undefined,
+        stateOverride: blendedState,
       });
       enqueueSnackbar('Foundational setup saved', { variant: 'success' });
       setBaselineIncomeTypeId(effectiveState.agreement?.details?.incomeTypeId);
@@ -617,7 +695,8 @@ export default function AgreementGroupWizardPage() {
     if (!validateAgreementDetailsStep(state, enqueueSnackbar, [], sourceAgreement)) return;
     setSavingDraft(true);
     try {
-      await persistDraft({ validateStep2: true });
+      const blendedState = getBlendedStateForStep(1, state, sourceAgreement, false);
+      await persistDraft({ validateStep2: true, stateOverride: blendedState });
       enqueueSnackbar('Agreement saved', { variant: 'success' });
       navigate(buildGroupDetailPath(parsedGroupId) || ROUTES.AGREEMENTS);
     } catch (err) {
@@ -637,7 +716,8 @@ export default function AgreementGroupWizardPage() {
     if (!validateAgreementDetailsStep(state, enqueueSnackbar, [], sourceAgreement)) return;
     setSavingLoop(true);
     try {
-      await persistDraft({ validateStep2: true });
+      const blendedState = getBlendedStateForStep(1, state, sourceAgreement, false);
+      await persistDraft({ validateStep2: true, stateOverride: blendedState });
 
       const previousAgreementId = parsedActiveAgreementId;
       rememberAgreementStep(previousAgreementId, state.step);
@@ -699,15 +779,15 @@ export default function AgreementGroupWizardPage() {
   const discardUnsavedWizardStep = useCallback((targetStep) => {
     if (sourceAgreement) {
       restoreFromPersisted(sourceAgreement, {
-        step: targetStep,
         slabCount: persistedSlabCountRef.current,
+        step: targetStep,
       });
     } else {
       updateStep(targetStep);
     }
     setConfigurationFieldErrors({});
     setCommercialFieldErrors({});
-  }, [restoreFromPersisted, sourceAgreement, updateStep]);
+  }, [updateStep, sourceAgreement, restoreFromPersisted]);
 
   const handleStepClick = (stepIndex) => {
     if (stepIndex < state.step) {
@@ -746,7 +826,8 @@ export default function AgreementGroupWizardPage() {
     setConfigurationFieldErrors({});
     setSavingDraft(true);
     try {
-      await persistDraft({ validateStep2: true });
+      const blendedState = getBlendedStateForStep(1, state, sourceAgreement, false);
+      await persistDraft({ validateStep2: true, stateOverride: blendedState });
       enqueueSnackbar('Contract details saved', { variant: 'success' });
       syncStepToUrl(2);
     } catch (err) {
@@ -761,9 +842,16 @@ export default function AgreementGroupWizardPage() {
     if (commercialsOverride) {
       updateAgreementCommercials(commercialsOverride);
     }
+    let incomeTypes = [];
+    try {
+      const { data } = await axiosInstance.get(ENDPOINTS.INCOME_TYPES);
+      incomeTypes = data || [];
+    } catch (e) {
+      console.warn('Failed to load income types for validation');
+    }
     const fieldErrors = await collectCommercialStructureStepErrorsAsync(
       effectiveState,
-      [],
+      incomeTypes,
       sourceAgreement,
       draftAgreementId,
     );
@@ -781,7 +869,8 @@ export default function AgreementGroupWizardPage() {
       if (structureType === STRUCTURE_TYPE.FLAT && draftAgreementId) {
         await purgeAllCommercialStructureData(draftAgreementId);
       }
-      await persistDraft({ validateCommercialStructure: true, stateOverride: effectiveState });
+      const blendedState = getBlendedStateForStep(2, effectiveState, sourceAgreement, false);
+      await persistDraft({ validateCommercialStructure: true, stateOverride: blendedState });
       const incomeTypeId = state.agreement?.details?.incomeTypeId ?? sourceAgreement?.incomeTypeId;
       const incomeTypeName = state.agreement?.details?.incomeTypeName ?? sourceAgreement?.incomeTypeName;
       if (isAssetRentalIncomeType([], incomeTypeId, incomeTypeName)) {
@@ -898,6 +987,8 @@ export default function AgreementGroupWizardPage() {
       sourceAgreement={sourceAgreement}
       onCommercialsAdvance={handleCommercialsNext}
       fieldErrors={commercialFieldErrors}
+      commercialData={state.commercialData}
+      onUpdateCommercialData={updateCommercialData}
     />,
     <Step5GroupReview
       key={`step5-group-${parsedActiveAgreementId}`}
@@ -942,7 +1033,7 @@ export default function AgreementGroupWizardPage() {
         footerMode={footerMode}
         onNext={handleSetupNext}
         onBack={handleBack}
-        onCancel={() => navigate(buildGroupDetailPath(parsedGroupId) || ROUTES.AGREEMENTS)}
+        onCancel={() => navigate(ROUTES.AGREEMENTS)}
         onSaveAndCreateAnother={state.step === 3 ? handleSaveAndCreateAnother : undefined}
         saveAndCreateAnotherDisabled={!canSaveAndCreateAnother}
         saveAndCreateAnotherDisabledReason="Complete steps 1–3 (foundational data) before creating another agreement."

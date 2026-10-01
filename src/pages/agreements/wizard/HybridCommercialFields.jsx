@@ -256,6 +256,10 @@ export default function HybridCommercialFields({
   };
 
   const validateDraftSlab = (ccTierMode = false) => {
+    if (draftSlab.valueType === 'PERCENTAGE' && Number(draftSlab.commercialValue) > 100) {
+      enqueueSnackbar('Percentage cannot exceed 100%', { variant: 'warning' });
+      return false;
+    }
     if (ccTierMode) {
       if (draftSlab.minCap === '' || draftSlab.commercialValue === '') {
         enqueueSnackbar('Complete Target Value and Payout Value before saving', { variant: 'warning' });

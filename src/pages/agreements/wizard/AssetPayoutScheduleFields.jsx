@@ -88,6 +88,7 @@ export default function AssetPayoutScheduleFields({
                       fullWidth
                       value={row.payoutPerStore ?? ''}
                       onChange={(e) => updateRow(index, { payoutPerStore: e.target.value })}
+                      onInput={(e) => { e.target.value = e.target.value.slice(0, 13); }}
                       slotProps={{
                         input: {
                           startAdornment: <InputAdornment position="start">₹</InputAdornment>,

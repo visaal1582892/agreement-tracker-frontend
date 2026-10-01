@@ -7,7 +7,6 @@ import CommercialAgreementsJbpSection from './CommercialAgreementsJbpSection';
 import DataFeeCommercialFields from './DataFeeCommercialFields';
 import HybridCommercialFields from './HybridCommercialFields';
 import StoreMappingImporter from './StoreMappingImporter';
-import RevisionStoreMappingSection from './RevisionStoreMappingSection';
 import { hasPersistedContractDetails } from '../../../utils/agreementWizardUtils';
 import {
   isAdHocIncomeType,
@@ -92,25 +91,16 @@ export default function CommercialStructureStep({
         <>
           <CollapsibleSection
             title="Participating Store Scope (Excel Mapping)"
-            description={revisionMode
-              ? 'Parse store codes into memory (required when dates change).'
-              : 'Download template, upload store codes, and review mapped outlets.'}
+            description="Download template, upload store codes, and review mapped outlets."
             forceExpand={storeScopeHasError}
             hasError={storeScopeHasError}
           >
-            {revisionMode ? (
-              <RevisionStoreMappingSection
-                sourceVersionId={sourceVersionId}
-                storeMappings={commercialData?.storeMappings}
-                parseErrors={commercialData?.storeParseErrors ?? []}
-                onParsed={onUpdateCommercialData}
-              />
-            ) : (
-              <StoreMappingImporter
-                agreementVersionId={serverAgreementId}
-                fieldError={fieldErrors.storeMappings}
-              />
-            )}
+            <StoreMappingImporter
+              agreementVersionId={serverAgreementId}
+              fieldError={fieldErrors.storeMappings}
+              storeMappings={commercialData?.storeMappings}
+              onMappingsChange={(stores) => onUpdateCommercialData?.({ storeMappings: stores })}
+            />
           </CollapsibleSection>
 
           <CollapsibleSection

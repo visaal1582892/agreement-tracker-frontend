@@ -8,6 +8,8 @@ export default function Step1Setup({
   updateAgreementDetails,
   groupFieldsLocked = false,
   identityLocked = false,
+  incomeTypeLocked = false,
+  datesLocked = false,
   minStartDate = null,
   fieldErrors = {},
   onClearFieldError,
@@ -30,6 +32,8 @@ export default function Step1Setup({
         agreement={state.agreement}
         onUpdateDetails={updateAgreementDetails}
         identityLocked={identityLocked}
+        incomeTypeLocked={incomeTypeLocked}
+        datesLocked={datesLocked}
         minStartDate={minStartDate}
         fieldErrors={fieldErrors}
         onClearFieldError={onClearFieldError}

@@ -43,15 +43,21 @@ export function resolveWizardStepForAgreement(agreementKey, {
 } = {}) {
   if (forcedInternalStep != null) return forcedInternalStep;
 
-  const remembered = getRememberedWizardStep(agreementKey);
-  if (remembered != null) return remembered;
-
-  if (isActiveAgreement && urlStepParam != null && urlStepParam !== '') {
+  // URL step takes priority — it reflects the user's explicit navigation (refresh, bookmark, back button)
+  if (urlStepParam != null && urlStepParam !== '') {
     const parsed = Number.parseInt(urlStepParam, 10);
     if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= 4) {
-      return parsed - 1;
+      const internalStep = parsed - 1;
+      // Sync remembered step to match URL
+      if (agreementKey) {
+        rememberWizardStep(agreementKey, internalStep);
+      }
+      return internalStep;
     }
   }
+
+  const remembered = getRememberedWizardStep(agreementKey);
+  if (remembered != null) return remembered;
 
   return 0;
 }

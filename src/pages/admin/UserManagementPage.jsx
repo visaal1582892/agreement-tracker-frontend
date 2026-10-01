@@ -9,7 +9,7 @@ import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { BRAND } from '../../config/theme';
 import PageHeader from '../../components/ui/PageHeader';
-import SearchableSelect from '../../components/forms/SearchableSelect';
+import UnifiedSelect from '../../components/forms/UnifiedSelect';
 
 export default function UserManagementPage() {
   const { enqueueSnackbar } = useSnackbar();
@@ -127,7 +127,7 @@ export default function UserManagementPage() {
             Move all active agreements from one Account Manager to another.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <SearchableSelect
+            <UnifiedSelect
               label="From (Current Owner)"
               placeholder="Search departing user…"
               options={lookupOptions}
@@ -139,7 +139,7 @@ export default function UserManagementPage() {
               isOptionEqualToValue={(a, b) => a?.id === b?.id}
               required
             />
-            <SearchableSelect
+            <UnifiedSelect
               label="To (New Owner)"
               placeholder="Search new owner…"
               options={lookupOptions.filter((u) => u.id !== fromUser?.id)}

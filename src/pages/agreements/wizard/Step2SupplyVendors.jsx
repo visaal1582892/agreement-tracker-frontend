@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Box, Grid, Typography } from '@mui/material';
 import { integrationApi } from '../../../api/integrationApi';
 import { useDebounce } from '../../../hooks/useDebounce';
-import SearchableSelect from '../../../components/forms/SearchableSelect';
+import UnifiedSelect from '../../../components/forms/UnifiedSelect';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
 
-const VENDOR_DROPDOWN_LIMIT = 50;
+const VENDOR_DROPDOWN_LIMIT = 30;
 const VENDOR_SEARCH_DEBOUNCE_MS = 500;
 
 function toNumericId(id) {
@@ -46,13 +46,16 @@ export default function Step2SupplyVendors({
 
   useEffect(() => {
     let mounted = true;
-    integrationApi.searchStates('')
+    // Load India states (CountryCode = 1 or 'IN') for the vendor state filter
+    integrationApi.searchStates('', ['1', 'IN'])
       .then(({ data }) => {
         if (!mounted) return;
         const options = Array.isArray(data) ? data.map((item) => ({
           ...item,
           id: item.code,
-          label: `${item.name} (${item.code})`,
+          code: item.code,
+          name: item.name,
+          label: item.stateSubName ? `${item.name} (${item.stateSubName})` : `${item.name} (${item.code})`,
         })) : [];
         setAllStates(options);
       })
@@ -97,7 +100,7 @@ export default function Step2SupplyVendors({
           if (!cancelled) setIsVendorLoading(false);
         });
     } else {
-      const stateCodes = selectedStates.map(s => s.code);
+      const stateCodes = selectedStates.map(s => s.stateSubName || s.subName || s.code);
       integrationApi.searchVendors(trimmedSearch, stateCodes)
         .then((response) => {
           if (cancelled) return;
@@ -129,9 +132,9 @@ export default function Step2SupplyVendors({
       const hydrated = selectedVendors
         .map(normalizeVendor)
         .filter((vendor) => vendorIds.some((id) => toNumericId(id) === vendor.id));
-        
+
       hasMissingState = hydrated.some((v) => !v.state);
-      
+
       if (!hasMissingState && hydrated.length === vendorIds.length) {
         setResolvedVendors(hydrated);
         return undefined;
@@ -178,8 +181,9 @@ export default function Step2SupplyVendors({
     <Box sx={{ mb: 0 }}>
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 5 }}>
-          <SearchableSelect
-            isMulti
+          <UnifiedSelect
+            multiple
+            showOptionsOnEmpty
             label="State Filter"
             placeholder="All States"
             options={allStates}
@@ -191,10 +195,10 @@ export default function Step2SupplyVendors({
         </Grid>
         <Grid size={{ xs: 12, md: 7 }}>
           <WizardFieldAnchor field="supplyVendors" error={error}>
-            <SearchableSelect
+            <UnifiedSelect
               label="Supply Vendors"
               placeholder="Search vendors by name or ID…"
-              isMulti
+              multiple
               options={fetchedVendors}
               value={resolvedVendors}
               onChange={handleVendorChange}
@@ -213,6 +217,7 @@ export default function Step2SupplyVendors({
               maxVisibleChips={2}
               required
               disabled={disabled}
+              clearOnSelect={false}
             />
           </WizardFieldAnchor>
         </Grid>

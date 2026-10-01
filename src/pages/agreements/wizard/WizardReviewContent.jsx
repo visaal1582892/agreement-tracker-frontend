@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import AgreementCoreDetails from '../../../components/review/sections/AgreementCoreDetails';
+import AssetCommercialsDetails from '../../../components/review/sections/AssetCommercialsDetails';
+import GeographyLimitsDetails from '../../../components/review/sections/GeographyLimitsDetails';
+import { formatCommercialValue } from '../../../utils/numberFormatting';
 import {
   Box,
   Typography,
@@ -11,14 +15,18 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Grid,
 } from '@mui/material';
+import PublicIcon from '@mui/icons-material/Public';
+import MapIcon from '@mui/icons-material/Map';
+import LocationCityIcon from '@mui/icons-material/LocationCity';
 import dayjs from 'dayjs';
 import { useSnackbar } from 'notistack';
 import CollapsibleSection from '../../../components/wizard/CollapsibleSection';
 import { formatTenureFromDates } from '../../../components/forms/DateRangeFields';
 import { fetchSlabs } from '../../../api/commercialApi';
 import { fetchStoreMappings } from '../../../api/storeMappingApi';
-import StoreMappingReviewSummary from './StoreMappingReviewSummary';
+import StoreMappingTable from './StoreMappingTable';
 import CommercialsUploadModal from './CommercialsUploadModal';
 import JbpReviewShowcase from './JbpReviewShowcase';
 import { getIncomeTypeDisplayName, INCOME_TYPE_NAMES } from '../../../constants/incomeTypeNames';
@@ -32,6 +40,7 @@ import {
 import { CAP_UNIT } from '../../../constants/capUnit';
 import { LEAD_TIME_BASIS, LEAD_TIME_BASIS_OPTIONS } from '../../../constants/leadTimeBasis';
 import ScopeOperationsReview from '../../../components/review/ScopeOperationsReview';
+import OverflowBubbleList from '../../../components/common/OverflowBubbleList';
 import DocumentFileLink from '../../../components/upload/DocumentFileLink';
 import { resolveAgreementFinancialYearStartMonth } from '../../../utils/jbpMatrixUtils';
 
@@ -60,7 +69,35 @@ function ReviewRow({ label, value }) {
   return (
     <Box sx={{ display: 'flex', py: 0.75 }}>
       <Typography variant="body2" color="text.secondary" sx={{ width: 180, flexShrink: 0 }}>{label}</Typography>
-      <Typography variant="body2" fontWeight={500}>{value || '—'}</Typography>
+      {typeof value === 'string' ? (
+        <Typography variant="body2" fontWeight={500}>{value || '—'}</Typography>
+      ) : (
+        value || <Typography variant="body2" fontWeight={500}>—</Typography>
+      )}
+    </Box>
+  );
+}
+
+function LocationGroup({ title, icon: Icon, items, maxVisible = 5, chipProps = { size: 'small', variant: 'outlined' } }) {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <Box sx={{ mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, ml: 0.5 }}>
+        <Icon sx={{ fontSize: 16, color: 'primary.main' }} />
+        <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.secondary', lineHeight: 1 }}>
+          {title} ({items.length})
+        </Typography>
+      </Box>
+      <OverflowBubbleList
+        items={items}
+        maxVisible={maxVisible}
+        chipProps={{
+          icon: <Icon sx={{ fontSize: 14 }} />,
+          ...chipProps
+        }}
+        popoverTitle={title}
+      />
     </Box>
   );
 }
@@ -73,11 +110,6 @@ function resolveIncomeProfile(incomeTypeName) {
   return 'STANDARD';
 }
 
-function formatCommercialValue(value, valueType) {
-  if (value === null || value === undefined || value === '') return '—';
-  if (valueType === 'PERCENTAGE') return `${value}%`;
-  return `₹${Number(value).toLocaleString('en-IN')}`;
-}
 
 function formatCapValue(value, capUnit) {
   if (value === null || value === undefined || value === '') return '—';
@@ -201,8 +233,24 @@ export default function WizardReviewContent({
   const { enqueueSnackbar } = useSnackbar();
   const [slabs, setSlabs] = useState(initialSlabs ?? []);
   const [loadingSlabs, setLoadingSlabs] = useState(false);
-  const [storeMappings, setStoreMappings] = useState(version?.storeMappings ?? []);
+  const [storeMappings, setStoreMappings] = useState([]);
   const [loadingStores, setLoadingStores] = useState(false);
+  const [storePage, setStorePage] = useState(0);
+  const [storeRowsPerPage, setStoreRowsPerPage] = useState(20);
+  const [storeSearch, setStoreSearch] = useState('');
+  const [expandedStates, setExpandedStates] = useState(new Set());
+
+  const handleToggleState = (stateName) => {
+    setExpandedStates(prev => {
+      const next = new Set(prev);
+      if (next.has(stateName)) {
+        next.delete(stateName);
+      } else {
+        next.add(stateName);
+      }
+      return next;
+    });
+  };
 
   const details = wizardState?.agreement?.details ?? {};
   const reviewDocuments = resolveReviewDocuments(details, version);
@@ -223,27 +271,6 @@ export default function WizardReviewContent({
   const enableFlat = commercials.enableFlatBaseline ?? hybridFlags.enableFlatBaseline;
   const enableSlab = commercials.enableSlabIncentives ?? hybridFlags.enableSlabIncentives;
   const isQps = profile === 'AD_HOC';
-  const locationLabel = (() => {
-    const geographyMode = details.geographyMode ?? version?.geographyMode;
-    if (geographyMode === 'ALL') {
-      return 'All locations';
-    }
-    const states = details.partnerStates ?? version?.partnerStates ?? [];
-    const cities = details.partnerCities ?? version?.partnerCities ?? [];
-    const stateParts = (states ?? [])
-      .map((item) => (item?.code ? `${item.name} (${item.code})` : item?.name))
-      .filter(Boolean)
-      .map((label) => `State: ${label}`);
-    const cityParts = (cities ?? [])
-      .map((item) => {
-        const city = item?.code ? `${item.name} (${item.code})` : item?.name;
-        const parent = item?.stateName || item?.stateCode;
-        return city ? `City: ${city}${parent ? ` · ${parent}` : ''}` : null;
-      })
-      .filter(Boolean);
-    const all = [...stateParts, ...cityParts];
-    return all.length ? all.join('; ') : '—';
-  })();
   const calculationBasis = details.calculationBasis ?? version?.calculationBasis;
   const assetCategory = resolveAssetValue(asset, versionAsset, 'assetCategory');
   const isActivityAsset = assetCategory === 'ACTIVITY';
@@ -302,10 +329,6 @@ export default function WizardReviewContent({
       setStoreMappings(memoryStoreMappings);
       return;
     }
-    if (version?.storeMappings?.length) {
-      setStoreMappings(version.storeMappings);
-      return;
-    }
     const versionId = serverAgreementId ?? version?.id;
     if (!versionId) return;
     let cancelled = false;
@@ -322,40 +345,104 @@ export default function WizardReviewContent({
     };
     load();
     return () => { cancelled = true; };
-  }, [profile, serverAgreementId, version?.id, version?.storeMappings, memoryStoreMappings]);
+  }, [profile, serverAgreementId, version?.id, memoryStoreMappings]);
 
   return (
     <Box>
-      <Box sx={REVIEW_GRID_SX}>
-        <CollapsibleSection title="Agreement Group" defaultExpanded sx={REVIEW_SECTION_SX}>
-          <ReviewRow label="Agreement Group" value={wizardState?.agreementGroupName || wizardState?.newAgreementGroupName} />
-        </CollapsibleSection>
+      <CollapsibleSection
+        title="Core Details & Geography"
+        defaultExpanded
+        sx={REVIEW_SECTION_SX}
+      >
+        <AgreementCoreDetails
+          agreementName={
+            wizardState?.agreementName ||
+            wizardState?.newAgreementName
+          }
+          groupName={
+            wizardState?.agreementGroupName ||
+            wizardState?.newAgreementGroupName
+          }
+          ownerName={null}
+          incomeTypeName={getIncomeTypeDisplayName(incomeTypeName)}
+          agreementTypeName={
+            details.agreementTypeName ||
+            version?.agreementTypeName
+          }
+          startDate={
+            details.startDate ||
+            version?.startDate
+          }
+          expiryDate={
+            details.expiryDate ||
+            version?.expiryDate
+          }
+          commercialStructure={
+            commercials.commercialStructure ||
+            version?.commercialStructure
+          }
+          commercialValue={
+            commercials.commercialValue ||
+            version?.commercialValue
+          }
+          flatValueType={
+            commercials.flatValueType ||
+            commercials.valueType ||
+            version?.flatValueType
+          }
+          isAssetRental={profile === 'ASSET_RENTAL'}
+          notes={
+            details.notes ||
+            version?.notes
+          }
+          locations={
+            profile !== 'ASSET_RENTAL'
+              ? (details.locations ?? [])
+              : []
+          }
+          legacyStates={
+            profile !== 'ASSET_RENTAL'
+              ? (
+                details.partnerStates ??
+                version?.partnerStates ??
+                []
+              )
+              : []
+          }
+          legacyCities={
+            profile !== 'ASSET_RENTAL'
+              ? (
+                details.partnerCities ??
+                version?.partnerCities ??
+                []
+              )
+              : []
+          }
+          geographyMode={
+            profile !== 'ASSET_RENTAL'
+              ? (
+                details.geographyMode ??
+                version?.geographyMode ??
+                null
+              )
+              : null
+          }
+        />
+      </CollapsibleSection>
 
-        <CollapsibleSection title="Agreement Classification" defaultExpanded sx={REVIEW_SECTION_SX}>
-          <ReviewRow label="Income Type" value={getIncomeTypeDisplayName(incomeTypeName)} />
-          <ReviewRow label="Agreement Type" value={details.agreementTypeName || version?.agreementTypeName} />
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Duration & Notes" defaultExpanded sx={REVIEW_SECTION_SX}>
-          <ReviewRow
-            label="Start Date"
-            value={details.startDate ? dayjs(details.startDate).format('DD MMM YYYY') : version?.startDate ? dayjs(version.startDate).format('DD MMM YYYY') : ''}
-          />
-          <ReviewRow
-            label="Expiry Date"
-            value={details.expiryDate ? dayjs(details.expiryDate).format('DD MMM YYYY') : version?.expiryDate ? dayjs(version.expiryDate).format('DD MMM YYYY') : ''}
-          />
-          <ReviewRow
-            label="Tenure"
-            value={formatTenureFromDates(
-              details.startDate ?? version?.startDate,
-              details.expiryDate ?? version?.expiryDate,
-            )}
-          />
-          {(details.notes || version?.notes) && (
-            <ReviewRow label="Notes" value={details.notes || version?.notes} />
-          )}
-        </CollapsibleSection>
+      <Box sx={{ ...REVIEW_STACK_SX, mt: 3 }}>
+        {profile !== 'ASSET_RENTAL' && (
+          <CollapsibleSection title="Scope & Operations" defaultExpanded sx={REVIEW_SECTION_SX}>
+            <ScopeOperationsReview
+              vendorIds={wizardState?.vendorIds ?? []}
+              vendors={wizardState?.vendors ?? []}
+              productRules={productRules}
+              version={version}
+              agreementVersionId={serverAgreementId ?? version?.id}
+              adhocSubType={profile === 'AD_HOC' ? details.adhocSubType : null}
+            />
+          </CollapsibleSection>
+        )}
 
         <CollapsibleSection title="Settlement & Payment Routing" defaultExpanded sx={REVIEW_SECTION_SX}>
           {profile !== 'ASSET_RENTAL' && (
@@ -370,101 +457,57 @@ export default function WizardReviewContent({
           />
           <SettlementLeadTimeRows details={details} version={version} />
         </CollapsibleSection>
-      </Box>
-
-      <Box sx={{ ...REVIEW_STACK_SX, mt: 3 }}>
-        {profile !== 'ASSET_RENTAL' && (
-          <CollapsibleSection title="Scope & Operations" defaultExpanded sx={REVIEW_SECTION_SX}>
-            <ScopeOperationsReview
-              vendorIds={wizardState?.vendorIds ?? []}
-              vendors={wizardState?.vendors ?? []}
-              productRules={productRules}
-              version={version}
-              adhocSubType={profile === 'AD_HOC' ? details.adhocSubType : null}
-            />
-          </CollapsibleSection>
-        )}
 
         {profile === 'ASSET_RENTAL' && (
-          <CollapsibleSection title="Scope & Operations" defaultExpanded sx={REVIEW_SECTION_SX}>
-            <ReviewRow
-              label="Asset Category"
-              value={assetCategory === 'PHYSICAL_ASSET' ? 'Physical Asset' : assetCategory === 'ACTIVITY' ? 'Activity' : assetCategory}
+          <CollapsibleSection title="Asset Commercials" defaultExpanded sx={REVIEW_SECTION_SX}>
+            <AssetCommercialsDetails
+              agreement={{
+                ...wizardState?.agreement,
+                assetCategory: wizardState?.agreement?.asset?.assetCategory || asset?.assetCategory,
+                assetType: wizardState?.agreement?.asset?.assetType || asset?.assetType,
+                commercialStructure: (wizardState?.agreement?.asset?.payoutMode || asset?.payoutMode) === 'PER_STORE' ? 'PAYOUT_PER_STORE' : 'FLAT',
+                commercialValue: wizardState?.agreement?.asset?.flatPayout || asset?.flatPayout,
+                assetPayoutPeriods: wizardState?.agreement?.asset?.assetPayoutPeriods || payoutPeriods,
+                notes: wizardState?.agreement?.asset?.remarks || wizardState?.agreement?.details?.notes || asset?.remarks,
+              }}
+              assetStoreMappings={storeMappings}
+              versionId={version?.id || serverAgreementId}
             />
-            {!isActivityAsset && (
-              <ReviewRow label="Asset Type" value={resolveAssetValue(asset, versionAsset, 'assetType')} />
-            )}
-            <ReviewRow
-              label={assetPayoutMode === 'PER_STORE' ? 'Payout Schedule' : 'Flat Payout'}
-              value={assetPayoutMode === 'PER_STORE'
-                ? formatPayoutPeriodSummary(payoutPeriods)
-                : formatCommercialValue(
-                  resolveAssetValue(asset, versionAsset, 'flatPayout'),
-                  'FIXED',
-                )}
-            />
-            {(asset.remarks || versionAsset.remarks) && (
-              <ReviewRow label="Remarks" value={asset.remarks || versionAsset.remarks} />
-            )}
-          </CollapsibleSection>
-        )}
+            {storeMappings?.length > 0 && (() => {
+              const filteredStores = storeMappings.filter((s) => {
+                if (!storeSearch) return true;
+                const q = storeSearch.toLowerCase();
+                const id = s.storeId || s.storeCode || s.code || '';
+                const name = s.storeName || s.name || '';
+                return id.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+              });
+              const displayedStores = filteredStores.slice(storePage * storeRowsPerPage, (storePage + 1) * storeRowsPerPage);
 
-        {(profile === 'ASSET_RENTAL' || profile === 'COMMERCIAL_CONTRACTS' || profile === 'DATA_FEE') && (
-          <CollapsibleSection title="Geography & Limits" defaultExpanded sx={REVIEW_SECTION_SX}>
-            {profile === 'ASSET_RENTAL' && (
-              <>
-                <ReviewRow label="Location" value={locationLabel} />
-                <Box sx={{ py: 0.75 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ width: 180, flexShrink: 0, display: 'inline-block', verticalAlign: 'top' }}>
-                    Participating Stores
-                  </Typography>
-                  <Box component="span" sx={{ display: 'inline-block', verticalAlign: 'top' }}>
-                    {loadingStores ? (
-                      <Typography variant="body2" color="text.secondary">Loading stores…</Typography>
-                    ) : (
-                      <StoreMappingReviewSummary stores={storeMappings} versionId={version?.id || serverAgreementId} />
-                    )}
-                  </Box>
+              return (
+                <Box sx={{ mt: 2, borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+                  <StoreMappingTable
+                    title="Participating Stores"
+                    stores={displayedStores}
+                    readOnly={true}
+                    maxHeight={400}
+                    loading={loadingStores}
+                    page={storePage}
+                    rowsPerPage={storeRowsPerPage}
+                    totalElements={filteredStores.length}
+                    onPageChange={(e, newPage) => setStorePage(newPage)}
+                    onRowsPerPageChange={(e) => {
+                      setStoreRowsPerPage(parseInt(e.target.value, 10));
+                      setStorePage(0);
+                    }}
+                    search={storeSearch}
+                    onSearchChange={(val) => {
+                      setStoreSearch(val);
+                      setStorePage(0);
+                    }}
+                  />
                 </Box>
-              </>
-            )}
-            {(profile === 'COMMERCIAL_CONTRACTS' || profile === 'DATA_FEE') && (
-              <ReviewRow label="Location" value={locationLabel} />
-            )}
-          </CollapsibleSection>
-        )}
-
-        <CollapsibleSection title="Supporting Documents" defaultExpanded sx={REVIEW_SECTION_SX}>
-          {reviewDocuments.length ? (
-            reviewDocuments.map((doc, i) => (
-              <Box key={`${doc.fileName}-${doc.fileUrl || i}`} sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
-                <Chip label={doc.documentType} size="small" variant="outlined" />
-                <DocumentFileLink
-                  fileUrl={doc.fileUrl}
-                  fileName={doc.fileName || doc.originalFilename || doc.originalFileName}
-                />
-              </Box>
-            ))
-          ) : (
-            <Typography variant="body2" color="text.secondary">No documents uploaded in this session</Typography>
-          )}
-        </CollapsibleSection>
-
-        {profile === 'ASSET_RENTAL' && (
-          <CollapsibleSection title="Base Commercials" defaultExpanded sx={REVIEW_SECTION_SX}>
-            <ReviewRow
-              label="Payout Mode"
-              value={assetPayoutMode === 'PER_STORE' ? 'Payout per Store' : 'Flat Payout'}
-            />
-            <ReviewRow
-              label={assetPayoutMode === 'PER_STORE' ? 'Payout Schedule' : 'Amount'}
-              value={assetPayoutMode === 'PER_STORE'
-                ? formatPayoutPeriodSummary(payoutPeriods)
-                : formatCommercialValue(
-                  resolveAssetValue(asset, versionAsset, 'flatPayout'),
-                  'FIXED',
-                )}
-            />
+              );
+            })()}
           </CollapsibleSection>
         )}
 
@@ -486,17 +529,6 @@ export default function WizardReviewContent({
             <ReviewRow
               label="Payout Frequency"
               value={payoutFrequencyLabel(commercials.flatBaselineFrequency ?? version?.flatBaselineFrequency)}
-            />
-          </CollapsibleSection>
-        )}
-
-        {showCommercialJbpSection && (
-          <CollapsibleSection title="JBP Relational Matrix" defaultExpanded sx={REVIEW_SECTION_SX}>
-            <JbpReviewShowcase
-              agreementVersionId={serverAgreementId ?? version?.id}
-              financialYearStartMonth={financialYearStartMonth}
-              memoryStagedWorkbook={memoryJbp}
-              preferMemoryOverFetch={revisionMode}
             />
           </CollapsibleSection>
         )}
@@ -585,6 +617,33 @@ export default function WizardReviewContent({
             )}
           </CollapsibleSection>
         )}
+
+        {showCommercialJbpSection && (
+          <CollapsibleSection title="JBP Relational Matrix" defaultExpanded sx={REVIEW_SECTION_SX}>
+            <JbpReviewShowcase
+              agreementVersionId={serverAgreementId ?? version?.id}
+              financialYearStartMonth={financialYearStartMonth}
+              memoryStagedWorkbook={memoryJbp}
+              preferMemoryOverFetch={revisionMode}
+            />
+          </CollapsibleSection>
+        )}
+
+        <CollapsibleSection title="Supporting Documents" defaultExpanded sx={REVIEW_SECTION_SX}>
+          {reviewDocuments.length ? (
+            reviewDocuments.map((doc, i) => (
+              <Box key={`${doc.fileName}-${doc.fileUrl || i}`} sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
+                <Chip label={doc.documentType} size="small" variant="outlined" />
+                <DocumentFileLink
+                  fileUrl={doc.fileUrl}
+                  fileName={doc.fileName || doc.originalFilename || doc.originalFileName}
+                />
+              </Box>
+            ))
+          ) : (
+            <Typography variant="body2" color="text.secondary">No documents uploaded in this session</Typography>
+          )}
+        </CollapsibleSection>
       </Box>
     </Box>
   );

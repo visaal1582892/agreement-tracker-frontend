@@ -1,8 +1,8 @@
 import { RIGHTS } from '../config/rights';
 
-/** List API scope aligned with backend: MY unless user has AGREEMENT_VIEW_ALL. */
+/** List API scope aligned with backend: MY unless user has AGREEMENT_VIEW_ALL or DRAFT_VIEW_ALL. */
 export function resolveAgreementListScope(hasRight) {
-  return hasRight(RIGHTS.AGREEMENT_VIEW_ALL) ? 'ALL' : 'MY';
+  return hasRight(RIGHTS.AGREEMENT_VIEW_ALL) || hasRight(RIGHTS.DRAFT_VIEW_ALL) ? 'ALL' : 'MY';
 }
 
 export function isAgreementOwner(user, agreement) {
@@ -17,10 +17,10 @@ export function isDraftAgreement(agreement) {
 }
 
 /** Versions that are past records — show historical banner. */
-export const HISTORICAL_STATUSES = ['SUPERSEDED', 'REJECTED', 'EXPIRED'];
+export const HISTORICAL_STATUSES = ['SUPERSEDED', 'EDITED', 'REJECTED', 'EXPIRED'];
 
 /** Versions where edit/submit actions are blocked (excludes REJECTED — owner may revise). */
-export const READ_ONLY_STATUSES = ['SUPERSEDED', 'EXPIRED', 'TERMINATED'];
+export const READ_ONLY_STATUSES = ['SUPERSEDED', 'EDITED', 'EXPIRED', 'TERMINATED'];
 
 export function isHistoricalAgreement(agreement) {
   return HISTORICAL_STATUSES.includes(agreement?.computedStatus);
@@ -34,23 +34,25 @@ function blockedByReadOnly(isReadOnlyView) {
   return Boolean(isReadOnlyView);
 }
 
-/** Owner + AGREEMENT_EDIT + approvalStatus === DRAFT. */
+function hasRightFor(ctx, isOwner, rightMy, rightAll) {
+  return isOwner ? (ctx.hasRight(rightMy) || ctx.hasRight(rightAll)) : ctx.hasRight(rightAll);
+}
+
+/** Owner + SUBMIT_MY/ALL + approvalStatus === DRAFT. */
 export function canSubmit(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
   return (
     agreement.approvalStatus === 'DRAFT'
-    && isAgreementOwner(ctx.user, agreement)
-    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.AGREEMENT_SUBMIT_MY, RIGHTS.AGREEMENT_SUBMIT_ALL)
   );
 }
 
-/** Owner + AGREEMENT_EDIT + approvalStatus === DRAFT. */
+/** Owner + DRAFT_EDIT + approvalStatus === DRAFT. */
 export function canEditDraft(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
   return (
     agreement.approvalStatus === 'DRAFT'
-    && isAgreementOwner(ctx.user, agreement)
-    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.DRAFT_EDIT_MY, RIGHTS.DRAFT_EDIT_ALL)
   );
 }
 
@@ -58,10 +60,11 @@ export function canEditDraft(ctx, agreement, { isReadOnlyView = false } = {}) {
 export function canEditApproved(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
   if (agreement.computedStatus === 'TERMINATED' || agreement.terminationDate) return false;
+  if (isWithinRenewWindow(agreement)) return false;
+  if (agreement.inProgressFlag) return false;
   return (
     agreement.approvalStatus === 'APPROVED'
-    && isAgreementOwner(ctx.user, agreement)
-    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.AGREEMENT_EDIT_MY, RIGHTS.AGREEMENT_EDIT_ALL)
   );
 }
 
@@ -76,30 +79,29 @@ export function isWithinRenewWindow(agreement, { today = null } = {}) {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfExpiry = new Date(expiry.getFullYear(), expiry.getMonth(), expiry.getDate());
   const daysToExpiry = Math.round((startOfExpiry - startOfToday) / (24 * 60 * 60 * 1000));
-  return daysToExpiry <= 90;
+  return daysToExpiry >= -90 && daysToExpiry <= 90;
 }
 
-/** Owner + AGREEMENT_EDIT + APPROVED + within renew window.
+/** Owner + AGREEMENT_RENEW + APPROVED + within renew window.
  * EXPIRED is read-only for edits but renew stays available (ignores isReadOnlyView). */
 export function canRenew(ctx, agreement, { isReadOnlyView: _isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus) return false;
   if (agreement.computedStatus === 'TERMINATED' || agreement.terminationDate) return false;
   if (agreement.computedStatus === 'SUPERSEDED') return false;
   if (!isWithinRenewWindow(agreement)) return false;
+  if (agreement.inProgressFlag) return false;
   return (
     agreement.approvalStatus === 'APPROVED'
-    && isAgreementOwner(ctx.user, agreement)
-    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.AGREEMENT_RENEW_MY, RIGHTS.AGREEMENT_RENEW_ALL)
   );
 }
 
-/** Owner + AGREEMENT_EDIT + approvalStatus === REJECTED. */
+/** Owner + AGREEMENT_REVISE + approvalStatus === REJECTED. */
 export function canRevise(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
   return (
     agreement.approvalStatus === 'REJECTED'
-    && isAgreementOwner(ctx.user, agreement)
-    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.AGREEMENT_REVISE_MY, RIGHTS.AGREEMENT_REVISE_ALL)
   );
 }
 
@@ -115,23 +117,45 @@ export function canApprove(ctx, agreement) {
 }
 
 export function canReject(ctx, agreement) {
-  return canApprove(ctx, agreement);
+  if (!agreement?.approvalStatus) return false;
+  if (agreement.pendingActionRequest) return false;
+  return (
+    agreement.approvalStatus === 'PENDING_APPROVAL'
+    && ctx.hasRight(RIGHTS.AGREEMENT_REJECT)
+    && !isAgreementOwner(ctx.user, agreement)
+  );
 }
 
-/** AGREEMENT_EDIT + approvalStatus === APPROVED + not terminated + no pending action request. */
+/** AGREEMENT_TERMINATE + approvalStatus === APPROVED + not terminated + no pending action request. */
 export function canTerminate(ctx, agreement, { isReadOnlyView = false } = {}) {
   if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
   if (agreement.pendingActionRequest) return false;
+  if (agreement.inProgressFlag) return false;
   return (
     agreement.approvalStatus === 'APPROVED'
-    && ctx.hasRight(RIGHTS.AGREEMENT_EDIT)
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.AGREEMENT_TERMINATE_MY, RIGHTS.AGREEMENT_TERMINATE_ALL)
     && !agreement.terminationDate
   );
 }
 
-/** AGREEMENT_CREATE + approvalStatus !== DRAFT. Temporarily hidden — clone flow not production-ready. */
-export function canClone(_ctx, _agreement) {
-  return false;
+/** AGREEMENT_IN_PROGRESS + approvalStatus === APPROVED + not terminated + within 90 days. */
+export function canToggleInProgress(ctx, agreement, { isReadOnlyView = false } = {}) {
+  if (!agreement?.approvalStatus || blockedByReadOnly(isReadOnlyView)) return false;
+  if (agreement.computedStatus === 'TERMINATED' || agreement.terminationDate) return false;
+  return (
+    agreement.approvalStatus === 'APPROVED'
+    && hasRightFor(ctx, isAgreementOwner(ctx.user, agreement), RIGHTS.AGREEMENT_IN_PROGRESS_MY, RIGHTS.AGREEMENT_IN_PROGRESS_ALL)
+  );
+}
+
+/** AGREEMENT_CLONE + approvalStatus !== DRAFT. */
+export function canClone(ctx, agreement) {
+  if (!agreement?.approvalStatus) return false;
+  if (agreement.computedStatus === 'TERMINATED' || agreement.computedStatus === 'SUPERSEDED') return false;
+  return (
+    (agreement.approvalStatus === 'APPROVED' || agreement.computedStatus === 'EXPIRED')
+    && ctx.hasRight(RIGHTS.AGREEMENT_CLONE)
+  );
 }
 
 /** (owner or ADMIN_USERS) + not DRAFT + allowed status + no pending action request. */
@@ -149,13 +173,13 @@ export function canTransfer(ctx, agreement) {
   }
 
   return (
-    isAgreementOwner(ctx.user, agreement)
+    (isAgreementOwner(ctx.user, agreement) && ctx.hasRight(RIGHTS.AGREEMENT_TRANSFER))
     || ctx.hasRight(RIGHTS.ADMIN_USERS)
   );
 }
 
 export function canView(ctx) {
-  return ctx.hasRight(RIGHTS.AGREEMENT_VIEW) || ctx.hasRight(RIGHTS.AGREEMENT_VIEW_ALL);
+  return ctx.hasRight(RIGHTS.AGREEMENT_VIEW_MY) || ctx.hasRight(RIGHTS.AGREEMENT_VIEW_ALL) || ctx.hasRight(RIGHTS.DRAFT_VIEW_MY) || ctx.hasRight(RIGHTS.DRAFT_VIEW_ALL);
 }
 
 export function getDetailPageActions(ctx, agreement, { isReadOnlyView = false } = {}) {
@@ -170,8 +194,9 @@ export function getDetailPageActions(ctx, agreement, { isReadOnlyView = false } 
     renew: canRenew(ctx, agreement, options),
     revise: canRevise(ctx, agreement, options),
     terminate: canTerminate(ctx, agreement, options),
-    clone: false,
+    clone: canClone(ctx, agreement, options),
     transfer: !draft && canTransfer(ctx, agreement),
+    toggleInProgress: canToggleInProgress(ctx, agreement, options),
   };
 }
 
@@ -183,7 +208,7 @@ export function getListRowActions(ctx, agreement) {
     revise: canRevise(ctx, agreement),
     submit: canSubmit(ctx, agreement),
     approveReject: canApprove(ctx, agreement),
-    clone: false,
+    clone: canClone(ctx, agreement),
     transfer: canTransfer(ctx, agreement),
   };
 }
@@ -200,6 +225,7 @@ export function canPerformAction(ctx, action, agreement, options = {}) {
     terminate: canTerminate,
     clone: canClone,
     transfer: canTransfer,
+    toggleInProgress: canToggleInProgress,
     view: canView,
   };
   const fn = map[action];

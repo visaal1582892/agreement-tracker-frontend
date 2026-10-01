@@ -7,10 +7,10 @@ import { ENDPOINTS } from '../../config/endpoints';
 import { ROUTES } from '../../config/routes';
 import WizardLayout from '../../layouts/WizardLayout';
 import { useAgreementWizard } from '../../hooks/useAgreementWizard';
-import { buildGroupWizardPath } from '../../utils/agreementNavigation';
+import { buildAgreementEditPath } from '../../utils/agreementNavigation';
 import {
   buildStep1CreatePayload,
-  buildSanitizedStep1UpdatePayload,
+  buildSanitizedUpdateDraftPayload,
   urlStepFromInternal,
   validateStep1Fields,
 } from '../../utils/agreementWizardUtils';
@@ -45,12 +45,12 @@ export default function AgreementCreatePage() {
       const created = await createDraft();
       await axiosInstance.put(
         ENDPOINTS.AGREEMENT_VERSION_UPDATE(created.id),
-        buildSanitizedStep1UpdatePayload(state),
+        buildSanitizedUpdateDraftPayload(state),
         { params: { validateStep1: true } },
       );
       enqueueSnackbar('Foundational setup saved', { variant: 'success' });
       navigate(
-        buildGroupWizardPath(created.agreementGroupId, created.agreementId, {
+        buildAgreementEditPath(created.id, {
           step: urlStepFromInternal(1),
         }),
         { replace: true },

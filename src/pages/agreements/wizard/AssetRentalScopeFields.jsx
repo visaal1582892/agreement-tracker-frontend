@@ -66,18 +66,6 @@ export default function AssetRentalScopeFields({ asset, onUpdateAsset, fieldErro
           </Grid>
         )}
 
-        <Grid size={12}>
-          <TextField
-            label="Description / Remarks"
-            multiline
-            rows={2}
-            fullWidth
-            size="small"
-            value={asset?.remarks ?? ''}
-            onChange={(e) => onUpdateAsset({ remarks: e.target.value })}
-            slotProps={{ htmlInput: { maxLength: 500 } }}
-          />
-        </Grid>
       </Grid>
     </Box>
   );

@@ -14,13 +14,30 @@ export function validateAgreementForSubmit(state, enqueueSnackbar) {
     enqueueSnackbar('Cannot submit: At least one Vendor is required.', { variant: 'warning' });
     return false;
   }
-  if (!isAssetRental && !state.productRules?.manufacturers?.length) {
+  const hasManufacturerCombination =
+    Array.isArray(state.productRules?.combinations) &&
+    state.productRules.combinations.length > 0 &&
+    state.productRules.combinations.some((c) => c?.manufacturerId != null && c?.manufacturerId !== '');
+
+  const hasManufacturer =
+    hasManufacturerCombination ||
+    Boolean(state.productRules?.manufacturers?.length || state.productRules?.manufacturerIds?.length);
+
+  if (!isAssetRental && !hasManufacturer) {
     enqueueSnackbar('Cannot submit: At least one Manufacturer is required.', { variant: 'warning' });
     return false;
   }
-  const hasExplicitProductRules = (state.productRules?.productRules?.length ?? 0) > 0;
+  const hasCombinationRules =
+    Array.isArray(state.productRules?.combinations) &&
+    state.productRules.combinations.some((c) => (c.divisionRules?.length ?? 0) > 0 || (c.productRules?.length ?? 0) > 0);
+
+  const hasExplicitProductRules =
+    hasCombinationRules ||
+    (state.productRules?.productRules?.length ?? 0) > 0 ||
+    (state.productRules?.divisionRules?.length ?? 0) > 0;
+
   const hasComputedProducts = (state.productRules?.computedProductPreview?.length ?? 0) > 0;
-  if (!isAssetRental && !hasExplicitProductRules && !hasComputedProducts) {
+  if (!isAssetRental && !hasExplicitProductRules && !hasComputedProducts && !hasManufacturerCombination) {
     enqueueSnackbar('Cannot submit: At least one Product is required.', { variant: 'warning' });
     return false;
   }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Grid, Paper, Typography, Divider, List, ListItemButton, ListItemText,
@@ -370,6 +371,7 @@ function PendingListPanel({
 }
 
 export default function ApprovalsPage() {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const {
     pendingApprovals,
@@ -482,7 +484,9 @@ export default function ApprovalsPage() {
             emptyVariant="approvals"
             hasSearch={hasSearch}
             selectedKey={selectedAgreementId}
-            onSelect={(a) => setSelectedAgreementId(a.agreementId)}
+            onSelect={(a) => {
+              navigate(`/agreements/${a.agreementId}?versionId=${a.versionId || a.id}`);
+            }}
             page={page}
             rowsPerPage={rowsPerPage}
             onPageChange={(_, newPage) => setPage(newPage)}

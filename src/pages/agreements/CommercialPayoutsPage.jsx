@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -12,11 +12,11 @@ import axiosInstance from '../../api/axiosInstance';
 import { ENDPOINTS } from '../../config/endpoints';
 import { normalizePageResponse } from '../../utils/pageResponse';
 import PageHeader from '../../components/ui/PageHeader';
-import SearchableSelect from '../../components/forms/SearchableSelect';
+import UnifiedSelect from '../../components/forms/UnifiedSelect';
 import CommercialPayoutReview from './wizard/CommercialPayoutReview';
 import { extractApiErrorMessage } from '../../api/commercialApi';
 
-const MAX_RESULTS = 50;
+const MAX_RESULTS = 30;
 
 function toOption(agreement) {
   const versionId = agreement.latestVersionId ?? agreement.currentVersionId ?? agreement.id;
@@ -45,25 +45,19 @@ export default function CommercialPayoutsPage() {
   const handleSearch = async (query) => {
     const q = (query ?? '').trim();
     lastQueryRef.current = q;
-    if (!q) {
-      setOptions([]);
-      return;
-    }
 
     setSearching(true);
     try {
       const [byName, byGroup] = await Promise.all([
         axiosInstance.get(ENDPOINTS.AGREEMENTS, {
-          params: { scope: 'ALL', size: MAX_RESULTS, page: 0, agreementName: q },
+          params: { scope: 'ALL', size: MAX_RESULTS, page: 0, ...(q ? { agreementName: q } : {}) },
         }),
         axiosInstance.get(ENDPOINTS.AGREEMENTS, {
-          params: { scope: 'ALL', size: MAX_RESULTS, page: 0, agreementGroupName: q },
+          params: { scope: 'ALL', size: MAX_RESULTS, page: 0, ...(q ? { agreementGroupName: q } : {}) },
         }),
       ]);
 
-      if (lastQueryRef.current !== q) {
-        return;
-      }
+      if (lastQueryRef.current !== q) return;
 
       const merged = new Map();
       [...normalizePageResponse(byName.data).content, ...normalizePageResponse(byGroup.data).content]
@@ -79,11 +73,13 @@ export default function CommercialPayoutsPage() {
         enqueueSnackbar(await extractApiErrorMessage(err, 'Failed to search agreements'), { variant: 'error' });
       }
     } finally {
-      if (lastQueryRef.current === q) {
-        setSearching(false);
-      }
+      if (lastQueryRef.current === q) setSearching(false);
     }
   };
+
+  // Load 30 most-recent agreements on mount so the dropdown has options immediately
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { handleSearch(''); }, []);
 
   const handleSelect = async (option) => {
     setSelectedAgreement(option);
@@ -124,9 +120,10 @@ export default function CommercialPayoutsPage() {
       <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', mb: 2 }}>
         <Typography fontWeight={600} sx={{ mb: 1.5 }}>Select Agreement</Typography>
         <Box sx={{ maxWidth: 520 }}>
-          <SearchableSelect
+          <UnifiedSelect
             label="Search agreement or group name"
             placeholder="Type an agreement name or group name…"
+            showOptionsOnEmpty
             options={options}
             value={selectedAgreement}
             onChange={handleSelect}
@@ -145,7 +142,7 @@ export default function CommercialPayoutsPage() {
               </Box>
             )}
             noOptionsText="No matching agreements"
-            emptyQueryText="Type to search agreements…"
+            emptyQueryText="Loading agreements…"
           />
         </Box>
 

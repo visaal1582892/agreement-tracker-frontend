@@ -218,15 +218,14 @@ export default function JbpMatrixReviewTable({
           No commercial periods defined for this target interval.
         </Typography>
       ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
-          <Table size="small">
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto', maxHeight: 400 }}>
+          <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 {reviewHeaders.parentPeriod && <TableCell>{reviewHeaders.parentPeriod}</TableCell>}
                 {reviewHeaders.subPeriod && <TableCell>{reviewHeaders.subPeriod}</TableCell>}
                 {reviewHeaders.period && <TableCell>{reviewHeaders.period}</TableCell>}
                 <TableCell>{reviewHeaders.slabTier}</TableCell>
-                <TableCell>{reviewHeaders.targetType}</TableCell>
                 <TableCell align="right">{reviewHeaders.target}</TableCell>
                 <TableCell align="right">{reviewHeaders.qualifierPercent}</TableCell>
                 <TableCell>{reviewHeaders.payoutType}</TableCell>
@@ -251,12 +250,6 @@ export default function JbpMatrixReviewTable({
                   {reviewHeaders.subPeriod && <TableCell>{row.subPeriodName}</TableCell>}
                   {reviewHeaders.period && <TableCell>{row.periodName}</TableCell>}
                   <TableCell>{row.slabTier}</TableCell>
-                  <TableCell
-                    sx={row.targetTypeLocked ? { color: 'text.secondary', fontStyle: 'italic' } : undefined}
-                  >
-                    {row.targetType}
-                    {row.targetTypeLocked ? ' (locked)' : ''}
-                  </TableCell>
                   <TableCell align="right">{row.target}</TableCell>
                   <TableCell align="right">{row.qualifierPercent}</TableCell>
                   <TableCell>{row.payoutType}</TableCell>

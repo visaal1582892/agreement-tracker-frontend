@@ -142,6 +142,7 @@ export default function DashboardPage() {
         icon: <EditNote />,
         color: '#6366F1',
         subtitle: canViewAllDrafts ? 'All unsubmitted agreements' : 'Unsubmitted agreements',
+        onClick: () => navigate(ROUTES.AGREEMENTS_DRAFTS),
       });
     }
 
@@ -153,6 +154,7 @@ export default function DashboardPage() {
         icon: <Warning />,
         color: '#DC2626',
         subtitle: 'Rejected — needs fixes',
+        onClick: () => navigate(`${ROUTES.AGREEMENTS_LIST}?status=REJECTED`),
       });
     }
 
@@ -164,10 +166,17 @@ export default function DashboardPage() {
         icon: <HourglassEmpty />,
         color: BRAND.red,
         subtitle: 'Global approval queue',
+        onClick: () => navigate(ROUTES.APPROVALS),
       });
     }
 
     if (canViewAgreements) {
+      const today = new Date();
+      const in30Days = new Date();
+      in30Days.setDate(today.getDate() + 30);
+      const startDateStr = today.toISOString().split('T')[0];
+      const endDateStr = in30Days.toISOString().split('T')[0];
+
       widgets.push(
         {
           key: 'active',
@@ -176,6 +185,7 @@ export default function DashboardPage() {
           icon: <Description />,
           color: '#16A34A',
           subtitle: canViewGlobalAgreements ? 'Org-wide live' : 'Your live agreements',
+          onClick: () => navigate(`${ROUTES.AGREEMENTS_LIST}?status=ACTIVE`),
         },
         {
           key: 'expiring',
@@ -184,6 +194,7 @@ export default function DashboardPage() {
           icon: <Warning />,
           color: '#EA580C',
           subtitle: 'Within 30 days',
+          onClick: () => navigate(`${ROUTES.AGREEMENTS_LIST}?status=ACTIVE&endDateFrom=${startDateStr}&endDateTo=${endDateStr}`),
         },
         {
           key: 'expired',
@@ -192,6 +203,7 @@ export default function DashboardPage() {
           icon: <Cancel />,
           color: '#1E40AF',
           subtitle: 'Need renewal',
+          onClick: () => navigate(`${ROUTES.AGREEMENTS_LIST}?status=EXPIRED`),
         },
       );
     }
@@ -204,6 +216,7 @@ export default function DashboardPage() {
         icon: <LocalOfferOutlined />,
         color: '#16A34A',
         subtitle: 'Active price-offs',
+        onClick: () => navigate(`${ROUTES.PRICE_OFFS}?status=LIVE`),
       });
     }
 
@@ -215,6 +228,7 @@ export default function DashboardPage() {
         icon: <LocalOfferOutlined />,
         color: '#D97706',
         subtitle: 'Awaiting your review',
+        onClick: () => navigate(ROUTES.PRICE_OFFS_APPROVALS),
       });
     }
 
@@ -241,6 +255,7 @@ export default function DashboardPage() {
         icon: <PeopleOutlined />,
         color: '#0284C7',
         subtitle: 'System accounts',
+        onClick: () => navigate(ROUTES.ADMIN_USERS),
       });
     }
 
@@ -305,6 +320,33 @@ export default function DashboardPage() {
   const firstName = user?.fullName?.split(' ')[0] || 'System';
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
 
+  const expiryBandsWithRouting = useMemo(() => {
+    const todayDate = new Date();
+    const toStr = (d) => d.toISOString().split('T')[0];
+
+    const addDays = (days) => {
+      const d = new Date(todayDate);
+      d.setDate(todayDate.getDate() + days);
+      return d;
+    };
+
+    return EXPIRY_BANDS.map(band => {
+      let url = `${ROUTES.AGREEMENTS_LIST}?status=ACTIVE`;
+      
+      if (band.key === 'expiringIn30Days') {
+        url += `&endDateFrom=${toStr(todayDate)}&endDateTo=${toStr(addDays(30))}`;
+      } else if (band.key === 'expiringIn60Days') {
+        url += `&endDateFrom=${toStr(addDays(31))}&endDateTo=${toStr(addDays(60))}`;
+      } else if (band.key === 'expiringIn90Days') {
+        url += `&endDateFrom=${toStr(addDays(61))}&endDateTo=${toStr(addDays(90))}`;
+      } else if (band.key === 'inProgress') {
+        url = `${ROUTES.AGREEMENTS_LIST}?status=IN_PROGRESS`;
+      }
+      
+      return { ...band, onClick: () => navigate(url) };
+    });
+  }, [navigate]);
+
   return (
     <Box>
       <Paper
@@ -356,6 +398,7 @@ export default function DashboardPage() {
                   icon={widget.icon}
                   color={widget.color}
                   subtitle={widget.subtitle}
+                  onClick={widget.onClick}
                 />
               )}
             </Grid>
@@ -380,6 +423,7 @@ export default function DashboardPage() {
                     icon={widget.icon}
                     color={widget.color}
                     subtitle={widget.subtitle}
+                    onClick={widget.onClick}
                   />
                 )}
               </Grid>
@@ -553,13 +597,14 @@ export default function DashboardPage() {
               <Paper elevation={0} sx={{ ...cardSx, p: 3 }}>
                 <SectionHeader icon={<EventNote sx={{ fontSize: 18 }} />} title="Expiry Summary" />
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-                  {EXPIRY_BANDS.map(({ label, key, color, bg }) => (
-                    <Box key={key} sx={{
+                  {expiryBandsWithRouting.map(({ label, key, color, bg, onClick }) => (
+                    <Box key={key} onClick={onClick} sx={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       px: 2, py: 1.35, borderRadius: 2.5,
                       background: bg,
                       border: `1px solid ${alpha(color, 0.1)}`,
                       transition: 'transform 0.15s ease',
+                      cursor: 'pointer',
                       '&:hover': { transform: 'translateX(3px)' },
                     }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>

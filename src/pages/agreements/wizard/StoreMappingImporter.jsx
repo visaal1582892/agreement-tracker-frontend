@@ -163,8 +163,9 @@ export default function StoreMappingImporter({
 
   const handleAddCustomStore = (storeData) => {
     const current = storeMappings || [];
-    if (current.some(s => String(s.storeId) === String(storeData.storeId))) {
-      enqueueSnackbar('Store ID is already mapped', { variant: 'warning' });
+    const newStoreId = String(storeData.storeId || '').trim().toUpperCase();
+    if (current.some(s => String(s.storeId || s.storeCode || '').trim().toUpperCase() === newStoreId)) {
+      enqueueSnackbar(`Store ID '${storeData.storeId}' is already mapped`, { variant: 'warning' });
       return;
     }
     const newMappings = [...current, { ...storeData, isCustom: true, id: `custom-${Date.now()}` }];

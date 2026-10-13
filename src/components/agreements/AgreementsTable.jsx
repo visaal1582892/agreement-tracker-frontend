@@ -23,10 +23,14 @@ import ConfirmDialog from '../ui/ConfirmDialog';
 import { useModal } from '../../hooks/useModal';
 
 const STATUS_FILTER_OPTIONS = [
-  { value: 'DRAFT', label: 'Draft' },
-  { value: 'PENDING_APPROVAL', label: 'Pending' },
-  { value: 'APPROVED', label: 'Approved' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'PENDING_APPROVAL', label: 'Pending Approval' },
   { value: 'REJECTED', label: 'Rejected' },
+  { value: 'TERMINATED', label: 'Terminated' },
+  { value: 'IN_PROGRESS', label: 'In Progress' },
+  { value: 'SUPERSEDED', label: 'Superseded' },
+  { value: 'EXPIRED', label: 'Expired' },
+  { value: 'UPCOMING', label: 'Upcoming' },
 ];
 
 const formatDate = (d) =>
@@ -243,6 +247,7 @@ const buildColumns = ({
   loadingVendors,
   loadingIncomeTypes,
   hideGroupColumn,
+  hideStatusFilter,
 }) => [
     {
       field: 'agreementName',
@@ -269,12 +274,8 @@ const buildColumns = ({
       header: 'Vendors',
       minWidth: 220,
       sortable: false,
-      filterType: 'searchable-select',
-      filterKey: 'vendorId',
-      filterOptions: vendorOptions,
-      onFilterSearch: onVendorSearch,
-      filterLoading: loadingVendors,
-      getOptionLabel: (o) => o?.vendorName || '',
+      filterType: 'text',
+      filterKey: 'vendorName',
       render: (vendors) => {
         if (!vendors?.length) return '—';
         const [first, ...rest] = vendors;
@@ -292,8 +293,6 @@ const buildColumns = ({
             )}
           </Box>
         );
-
-        if (rest.length === 0) return content;
 
         return (
           <Tooltip title={allNames} arrow placement="top">
@@ -369,9 +368,11 @@ const buildColumns = ({
       sortable: false,
       truncate: false,
       stickyRight: true,
-      filterType: 'select',
-      filterKey: 'status',
-      filterOptions: STATUS_FILTER_OPTIONS,
+      ...(hideStatusFilter ? { filterType: null } : {
+        filterType: 'select',
+        filterKey: 'status',
+        filterOptions: STATUS_FILTER_OPTIONS,
+      }),
       render: (v) => <StatusBadge status={v || 'DRAFT'} />,
     },
   ];
@@ -390,11 +391,13 @@ export default function AgreementsTable({
   onSort,
   filters = {},
   onFilterChange,
+  onClearFilters,
   emptyMessage = 'No agreements found.',
   onRefresh,
   hidePagination = false,
   lockedGroupId = null,
   draftEditMode = lockedGroupId ? 'group' : 'single',
+  hideStatusFilter = false,
 }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -476,6 +479,7 @@ export default function AgreementsTable({
       loadingVendors,
       loadingIncomeTypes,
       hideGroupColumn: Boolean(lockedGroupId),
+      hideStatusFilter,
     }),
     [
       vendorOptions,
@@ -485,6 +489,7 @@ export default function AgreementsTable({
       loadingVendors,
       loadingIncomeTypes,
       lockedGroupId,
+      hideStatusFilter,
     ],
   );
 
@@ -546,6 +551,7 @@ export default function AgreementsTable({
         onSort={onSort}
         filters={filters}
         onFilterChange={onFilterChange}
+        onClearFilters={onClearFilters}
         emptyMessage={emptyMessage}
         horizontalScroll
         hidePagination={hidePagination}

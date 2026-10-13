@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Paper, Table, TableBody, TableCell, TableHead,
   TablePagination, TableRow, TableSortLabel, TextField, Typography,
 } from '@mui/material';
-import { Delete, Download, Send, UploadFile } from '@mui/icons-material';
+import { Delete, Download, Send, UploadFile, Clear } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { alpha } from '@mui/material/styles';
 import PageHeader from '../../components/ui/PageHeader';
@@ -87,8 +88,16 @@ export default function PriceOffsDashboard() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [sortModel, setSortModel] = useState([DEFAULT_SORT]);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [debouncedFilters, setDebouncedFilters] = useState(EMPTY_FILTERS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => {
+    const nextFilters = { ...EMPTY_FILTERS };
+    for (const [key, value] of searchParams.entries()) {
+      if (value) nextFilters[key] = value;
+    }
+    return nextFilters;
+  }, [searchParams]);
+
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [channelOptions, setChannelOptions] = useState([]);
   const [discountTypeOptions, setDiscountTypeOptions] = useState([]);
   const [allLocations, setAllLocations] = useState([]);
@@ -142,8 +151,19 @@ export default function PriceOffsDashboard() {
   }, [enqueueSnackbar]);
 
   const updateFilter = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    }, { replace: true });
   };
+
+  const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== null && v !== '');
+
+  const handleClearFilters = useCallback(() => {
+    setSearchParams(new URLSearchParams(), { replace: true });
+  }, [setSearchParams]);
 
   const activeSort = sortModel[0] ?? DEFAULT_SORT;
 
@@ -444,6 +464,16 @@ export default function PriceOffsDashboard() {
         >
           Update Campaign ID ({selectedCampaignIdRows.length})
         </Button>
+        {hasActiveFilters && (
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<Clear />}
+            onClick={handleClearFilters}
+          >
+            Clear Filters
+          </Button>
+        )}
       </Box>
 
       <Box

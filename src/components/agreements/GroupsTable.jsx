@@ -48,6 +48,7 @@ export default function GroupsTable({
   onSort,
   filters,
   onFilterChange,
+  onClearFilters,
   onDelete,
   emptyMessage = 'No agreement groups found.',
 }) {
@@ -139,6 +140,7 @@ export default function GroupsTable({
       onSort={onSort}
       filters={filters}
       onFilterChange={onFilterChange}
+      onClearFilters={onClearFilters}
       emptyMessage={emptyMessage}
       horizontalScroll
     />

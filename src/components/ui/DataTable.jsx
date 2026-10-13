@@ -2,9 +2,9 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TablePagination, TableSortLabel, Paper, Box, Typography,
   CircularProgress, TextField, InputAdornment, MenuItem, Select,
-  FormControl,
+  FormControl, Button
 } from '@mui/material';
-import { Search } from '@mui/icons-material';
+import { Search, Clear } from '@mui/icons-material';
 import { BRAND } from '../../config/theme';
 import UnifiedSelect from '../forms/UnifiedSelect';
 import DateRangeFilter from '../forms/DateRangeFilter';
@@ -159,6 +159,7 @@ export default function DataTable({
   onSort,
   filters = {},
   onFilterChange,
+  onClearFilters,
   searchValue,
   onSearch,
   rowsPerPageOptions = [10, 20, 50],
@@ -166,9 +167,11 @@ export default function DataTable({
   stickyHeader = true,
   horizontalScroll = false,
   hidePagination = false,
+  maxHeight,
 }) {
   const hasFilters = columns.some((c) => c.filterType);
   const stickyOffsets = buildStickyRightOffsets(columns);
+  const hasActiveFilters = Object.values(filters).some(val => val !== undefined && val !== null && val !== '');
 
   const resolveSearchableValue = (col, key) => {
     const raw = filters[key];
@@ -178,37 +181,53 @@ export default function DataTable({
   };
 
   return (
-    <Box>
-      {onSearch !== undefined && (
-        <Box sx={{ mb: 2 }}>
-          <TextField
-            size="small"
-            placeholder="Search…"
-            value={searchValue}
-            onChange={(e) => onSearch(e.target.value)}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search fontSize="small" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-            sx={{ width: 280 }}
-          />
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {(onSearch !== undefined || onClearFilters) && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {onSearch !== undefined ? (
+            <TextField
+              size="small"
+              placeholder="Search…"
+              value={searchValue}
+              onChange={(e) => onSearch(e.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{ width: 280 }}
+            />
+          ) : <Box />}
+          {onClearFilters && hasActiveFilters && (
+            <Button
+              variant="outlined"
+              color="secondary"
+              size="small"
+              onClick={onClearFilters}
+              startIcon={<Clear />}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
+            >
+              Clear Filters
+            </Button>
+          )}
         </Box>
       )}
 
-      <TableContainer
-        component={Paper}
-        elevation={0}
+      <Box sx={{ position: 'relative', flexGrow: 1, minHeight: 0 }}>
+        <TableContainer
+          component={Paper}
+          elevation={0}
         sx={{
           borderRadius: 2,
           border: '1px solid',
           borderColor: 'divider',
           overflowX: 'auto',
           overflowY: 'auto',
+          height: '100%',
         }}
       >
         <Table
@@ -317,6 +336,7 @@ export default function DataTable({
                           loading={col.filterLoading}
                           getOptionLabel={col.getOptionLabel}
                           placeholder={`Filter ${col.header}`}
+                          showOptionsOnEmpty={true}
                           disabled={false}
                         />
                       )}
@@ -343,15 +363,7 @@ export default function DataTable({
                   <CircularProgress size={28} color="primary" />
                 </TableCell>
               </TableRow>
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columns.length} align="center" sx={{ py: 6 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {emptyMessage}
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ) : (
+            ) : rows.length === 0 ? null : (
               rows.map((row, idx) => (
                 <TableRow
                   key={row.id ?? idx}
@@ -370,6 +382,28 @@ export default function DataTable({
           </TableBody>
         </Table>
       </TableContainer>
+
+      {!loading && rows.length === 0 && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: hasFilters ? 90 : 50,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            bgcolor: 'transparent',
+          }}
+        >
+          <Typography variant="body1" color="text.secondary" fontWeight={500}>
+            {emptyMessage}
+          </Typography>
+        </Box>
+      )}
+      </Box>
 
       {!hidePagination && totalCount !== undefined && (
         <TablePagination

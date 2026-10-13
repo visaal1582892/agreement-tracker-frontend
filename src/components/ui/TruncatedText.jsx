@@ -5,25 +5,20 @@ import { Box, Tooltip } from '@mui/material';
  * Single-line text with ellipsis. Tooltip only when content overflows.
  */
 export default function TruncatedText({ title, children, sx, ...props }) {
-  const ref = useRef(null);
-  const [overflow, setOverflow] = useState(false);
+  const [tooltipEnabled, setTooltipEnabled] = useState(false);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-
-    const check = () => setOverflow(el.scrollWidth > el.clientWidth);
-    check();
-
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [children, title]);
+  const handleMouseEnter = (e) => {
+    if (e.target.scrollWidth > e.target.clientWidth) {
+      setTooltipEnabled(true);
+    } else {
+      setTooltipEnabled(false);
+    }
+  };
 
   const content = (
     <Box
-      ref={ref}
       component="span"
+      onMouseEnter={handleMouseEnter}
       sx={{
         display: 'block',
         overflow: 'hidden',
@@ -38,10 +33,8 @@ export default function TruncatedText({ title, children, sx, ...props }) {
     </Box>
   );
 
-  if (!title || !overflow) return content;
-
   return (
-    <Tooltip title={title} arrow placement="top">
+    <Tooltip title={title || ''} arrow placement="top" disableHoverListener={!title || !tooltipEnabled}>
       {content}
     </Tooltip>
   );

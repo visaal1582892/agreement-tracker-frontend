@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Tab, Tabs, Typography, ToggleButton, ToggleButtonGroup, Button,
@@ -23,7 +23,7 @@ import { GroupDeleteDialogs, useGroupDeletion } from '../../hooks/useGroupDeleti
 const PAGE_TAB = { GROUPS: 'GROUPS', AGREEMENTS: 'AGREEMENTS', DRAFTS: 'DRAFTS' };
 const FETCH_MODE = { MY: 'MY', ALL: 'ALL' };
 
-function buildAgreementQueryParams({ page, rowsPerPage, sortBy, sortDir, scope, filters }) {
+export function buildAgreementQueryParams({ page, rowsPerPage, sortBy, sortDir, scope, filters }) {
   const params = { page, size: rowsPerPage, scope };
   if (sortBy) params.sort = `${sortBy},${sortDir || 'asc'}`;
   if (filters.agreementName) params.agreementName = filters.agreementName;
@@ -31,7 +31,7 @@ function buildAgreementQueryParams({ page, rowsPerPage, sortBy, sortDir, scope, 
   if (filters.agreementGroupName) params.agreementGroupName = filters.agreementGroupName;
   if (filters.status) params.status = filters.status;
   if (filters.ownerName) params.ownerName = filters.ownerName;
-  if (filters.vendorId) params.vendorId = filters.vendorId;
+  if (filters.vendorName) params.vendorName = filters.vendorName;
   if (filters.incomeTypeId) params.incomeTypeId = filters.incomeTypeId;
   if (filters.startDateFrom) params.startDateFrom = filters.startDateFrom;
   if (filters.startDateTo) params.startDateTo = filters.startDateTo;
@@ -70,9 +70,24 @@ export default function AgreementListPage() {
     : location.pathname.endsWith('/drafts')
       ? PAGE_TAB.DRAFTS
       : PAGE_TAB.GROUPS;
+  const [searchParams, setSearchParams] = useSearchParams();
   const [fetchMode, setFetchMode] = useState(defaultScope);
-  const [agreementFilters, setAgreementFilters] = useState({});
-  const [groupFilters, setGroupFilters] = useState({ isActive: 'true' });
+
+  const agreementFilters = useMemo(() => {
+    const filters = {};
+    for (const [key, value] of searchParams.entries()) {
+      if (value) filters[key] = value;
+    }
+    return filters;
+  }, [searchParams]);
+
+  const groupFilters = useMemo(() => {
+    const filters = { isActive: 'true' };
+    for (const [key, value] of searchParams.entries()) {
+      if (value) filters[key] = value;
+    }
+    return filters;
+  }, [searchParams]);
 
   const [groups, setGroups] = useState([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
@@ -81,7 +96,15 @@ export default function AgreementListPage() {
   const [drafts, setDrafts] = useState([]);
   const [draftsTotal, setDraftsTotal] = useState(0);
   const [draftsLoading, setDraftsLoading] = useState(false);
-  const [draftFilters, setDraftFilters] = useState({});
+
+  const draftFilters = useMemo(() => {
+    const filters = {};
+    for (const [key, value] of searchParams.entries()) {
+      if (value) filters[key] = value;
+    }
+    return filters;
+  }, [searchParams]);
+
   const draftTable = useDataTable();
   const debouncedDraftFilters = useDebounce(draftFilters, 600);
   const draftFilterKey = useMemo(
@@ -230,39 +253,43 @@ export default function AgreementListPage() {
   };
 
   const handleAgreementFilterChange = useCallback((key, value) => {
-    setAgreementFilters((prev) => {
-      const next = { ...prev };
-      if (value) next[key] = value;
-      else delete next[key];
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
       return next;
-    });
+    }, { replace: true });
     agreementTable.handlePageChange(null, 0);
-  }, [agreementTable]);
+  }, [setSearchParams, agreementTable]);
 
   const handleGroupFilterChange = useCallback((key, value) => {
-    setGroupFilters((prev) => {
-      const next = { ...prev };
-      if (value !== undefined && value !== null && value !== '') next[key] = value;
-      else delete next[key];
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value !== undefined && value !== null && value !== '') next.set(key, value);
+      else next.delete(key);
       return next;
-    });
+    }, { replace: true });
     groupTable.handlePageChange(null, 0);
-  }, [groupTable]);
+  }, [setSearchParams, groupTable]);
 
   const handleDraftFilterChange = useCallback((key, value) => {
     // Don't allow changing status filter on drafts page - it's always DRAFT
     if (key === 'status') return;
-    setDraftFilters((prev) => {
-      const next = { ...prev };
-      if (value) next[key] = value;
-      else delete next[key];
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
       return next;
-    });
+    }, { replace: true });
     draftTable.handlePageChange(null, 0);
-  }, [draftTable]);
+  }, [setSearchParams, draftTable]);
+
+  const handleClearFilters = useCallback(() => {
+    setSearchParams(new URLSearchParams(), { replace: true });
+  }, [setSearchParams]);
 
   return (
-    <Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5" fontWeight={700}>Agreements</Typography>
         {hasRight(RIGHTS.AGREEMENT_CREATE) && (
@@ -294,101 +321,85 @@ export default function AgreementListPage() {
 
       {pageTab === PAGE_TAB.GROUPS ? (
         <>
-          <PageHeader
-            title="Agreement Groups"
-            subtitle="Manage agreement groups"
-          />
-          <GroupsTable
-            rows={groups}
-            loading={groupsLoading}
-            totalCount={groupsTotal}
-            page={groupTable.page}
-            rowsPerPage={groupTable.rowsPerPage}
-            onPageChange={groupTable.handlePageChange}
-            onRowsPerPageChange={groupTable.handleRowsPerPageChange}
-            sortBy={groupTable.sortBy}
-            sortDir={groupTable.sortDir}
-            onSort={groupTable.handleSort}
-            filters={groupFilters}
-            onFilterChange={handleGroupFilterChange}
-            onDelete={handleDeleteGroup}
-          />
+
+          <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <GroupsTable
+              rows={groups}
+              loading={groupsLoading}
+              totalCount={groupsTotal}
+              page={groupTable.page}
+              rowsPerPage={groupTable.rowsPerPage}
+              onPageChange={groupTable.handlePageChange}
+              onRowsPerPageChange={groupTable.handleRowsPerPageChange}
+              sortBy={groupTable.sortBy}
+              sortDir={groupTable.sortDir}
+              onSort={groupTable.handleSort}
+              filters={groupFilters}
+              onFilterChange={handleGroupFilterChange}
+              onClearFilters={handleClearFilters}
+              onDelete={handleDeleteGroup}
+            />
+          </Box>
         </>
       ) : (pageTab === PAGE_TAB.DRAFTS && (canViewMy || canViewAllDrafts)) ? (
         <>
-          <PageHeader
-            title="Drafts"
-            subtitle={canViewAllDrafts ? "All unsubmitted agreements" : "Draft agreements you own"}
-          />
-          <AgreementsTable
-            rows={drafts}
-            loading={draftsLoading}
-            totalCount={draftsTotal}
-            page={draftTable.page}
-            rowsPerPage={draftTable.rowsPerPage}
-            onPageChange={draftTable.handlePageChange}
-            onRowsPerPageChange={draftTable.handleRowsPerPageChange}
-            sortBy={draftTable.sortBy}
-            sortDir={draftTable.sortDir}
-            onSort={draftTable.handleSort}
-            filters={draftFilters}
-            onFilterChange={handleDraftFilterChange}
-            onRefresh={loadDrafts}
-            emptyMessage="No drafts found."
-          />
-          {!draftsLoading && drafts.length > 0 && (
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-              <Typography variant="caption" color="text.secondary">
-                Showing {drafts.length} of {draftsTotal} drafts
-              </Typography>
-            </Box>
-          )}
+
+          <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <AgreementsTable
+              rows={drafts}
+              loading={draftsLoading}
+              totalCount={draftsTotal}
+              page={draftTable.page}
+              rowsPerPage={draftTable.rowsPerPage}
+              onPageChange={draftTable.handlePageChange}
+              onRowsPerPageChange={draftTable.handleRowsPerPageChange}
+              sortBy={draftTable.sortBy}
+              sortDir={draftTable.sortDir}
+              onSort={draftTable.handleSort}
+              filters={draftFilters}
+              onFilterChange={handleDraftFilterChange}
+              onClearFilters={handleClearFilters}
+              onRefresh={loadDrafts}
+              emptyMessage="No drafts found."
+              hideStatusFilter={true}
+            />
+          </Box>
         </>
       ) : (
         <>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: 2 }}>
-            <PageHeader
-              title="All Agreements"
-              subtitle={activeScope === FETCH_MODE.MY ? 'Agreements you own' : 'All agreements in the system'}
-            />
-            {showScopeToggle && (
+          {showScopeToggle && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
               <ToggleButtonGroup
                 size="small"
                 exclusive
                 value={activeScope}
                 onChange={handleScopeChange}
-                sx={{ mt: 1 }}
               >
                 <ToggleButton value={FETCH_MODE.MY}>My Agreements</ToggleButton>
                 <ToggleButton value={FETCH_MODE.ALL}>All Agreements</ToggleButton>
               </ToggleButtonGroup>
-            )}
-          </Box>
-
-          <AgreementsTable
-            rows={agreements}
-            loading={loading}
-            totalCount={totalElements}
-            page={agreementTable.page}
-            rowsPerPage={agreementTable.rowsPerPage}
-            onPageChange={agreementTable.handlePageChange}
-            onRowsPerPageChange={agreementTable.handleRowsPerPageChange}
-            sortBy={agreementTable.sortBy}
-            sortDir={agreementTable.sortDir}
-            onSort={agreementTable.handleSort}
-            filters={agreementFilters}
-            onFilterChange={handleAgreementFilterChange}
-            onRefresh={refreshAgreements}
-            emptyMessage="No agreements found."
-          />
-
-          {!loading && agreements.length > 0 && (
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-              <Typography variant="caption" color="text.secondary">
-                Showing {agreements.length} of {totalElements} agreements
-              </Typography>
             </Box>
           )}
+
+          <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <AgreementsTable
+              rows={agreements}
+              loading={loading}
+              totalCount={totalElements}
+              page={agreementTable.page}
+              rowsPerPage={agreementTable.rowsPerPage}
+              onPageChange={agreementTable.handlePageChange}
+              onRowsPerPageChange={agreementTable.handleRowsPerPageChange}
+              sortBy={agreementTable.sortBy}
+              sortDir={agreementTable.sortDir}
+              onSort={agreementTable.handleSort}
+              filters={agreementFilters}
+              onFilterChange={handleAgreementFilterChange}
+              onClearFilters={handleClearFilters}
+              onRefresh={refreshAgreements}
+              emptyMessage="No agreements found."
+            />
+          </Box>
         </>
       )}
 

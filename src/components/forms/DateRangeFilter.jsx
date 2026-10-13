@@ -1,11 +1,61 @@
 import { useState } from 'react';
 import { Box, Button, Popover, Typography, IconButton } from '@mui/material';
 import { Clear } from '@mui/icons-material';
-import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
+import { DateCalendar, PickerDay } from '@mui/x-date-pickers';
+import { BRAND } from '../../config/theme';
 import dayjs from 'dayjs';
 
 function toIso(value) {
   return value?.isValid?.() ? value.format('YYYY-MM-DD') : '';
+}
+
+function CustomPickersDay(props) {
+  const { day, from, to, ...other } = props;
+
+  const isStart = from?.isValid() && day.isSame(from, 'day');
+  const isEnd = to?.isValid() && day.isSame(to, 'day');
+  const isSelected = isStart || isEnd;
+  const isBetween = from?.isValid() && to?.isValid() && day.isAfter(from, 'day') && day.isBefore(to, 'day');
+
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...(isBetween && {
+          backgroundColor: `${BRAND.red}1A`,
+        }),
+        ...(isStart && to && !isEnd && {
+          borderTopLeftRadius: '50%',
+          borderBottomLeftRadius: '50%',
+          backgroundColor: `${BRAND.red}1A`,
+        }),
+        ...(isEnd && from && !isStart && {
+          borderTopRightRadius: '50%',
+          borderBottomRightRadius: '50%',
+          backgroundColor: `${BRAND.red}1A`,
+        }),
+      }}
+    >
+      <PickerDay
+        {...other}
+        day={day}
+        selected={isSelected}
+        sx={{
+          ...(isSelected && {
+            backgroundColor: `${BRAND.red} !important`,
+            color: 'white',
+          }),
+          ...(isBetween && {
+            backgroundColor: 'transparent !important',
+            color: 'inherit',
+          }),
+        }}
+      />
+    </Box>
+  );
 }
 
 export default function DateRangeFilter({
@@ -107,6 +157,10 @@ export default function DateRangeFilter({
           <DateCalendar
             value={selectingEnd ? (to?.isValid() ? to : null) : (from?.isValid() ? from : null)}
             onChange={handleDaySelect}
+            slots={{ day: CustomPickersDay }}
+            slotProps={{
+              day: { from, to },
+            }}
           />
         </Box>
       </Popover>

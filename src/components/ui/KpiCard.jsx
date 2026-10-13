@@ -1,23 +1,26 @@
 import { Box, Typography, alpha } from '@mui/material';
 import { BRAND } from '../../config/theme';
 
-export default function KpiCard({ title, value, icon, color = BRAND.red, subtitle }) {
+export default function KpiCard({ title, value, icon, color = BRAND.red, subtitle, onClick }) {
   return (
-    <Box sx={{
-      borderRadius: 3.5,
-      p: 2.75,
-      height: '100%',
-      position: 'relative',
-      overflow: 'hidden',
-      border: `1px solid ${alpha(color, 0.12)}`,
-      background: `linear-gradient(145deg, #fff 55%, ${alpha(color, 0.07)} 100%)`,
-      boxShadow: `0 4px 20px ${alpha(color, 0.08)}, 0 1px 3px rgba(15,23,42,0.04)`,
-      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-      '&:hover': {
-        transform: 'translateY(-3px)',
-        boxShadow: `0 12px 28px ${alpha(color, 0.14)}, 0 2px 6px rgba(15,23,42,0.06)`,
-      },
-    }}>
+    <Box 
+      onClick={onClick}
+      sx={{
+        borderRadius: 3.5,
+        p: 2.75,
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        border: `1px solid ${alpha(color, 0.12)}`,
+        background: `linear-gradient(145deg, #fff 55%, ${alpha(color, 0.07)} 100%)`,
+        boxShadow: `0 4px 20px ${alpha(color, 0.08)}, 0 1px 3px rgba(15,23,42,0.04)`,
+        transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+        cursor: onClick ? 'pointer' : 'default',
+        '&:hover': {
+          transform: 'translateY(-3px)',
+          boxShadow: `0 12px 28px ${alpha(color, 0.14)}, 0 2px 6px rgba(15,23,42,0.06)`,
+        },
+      }}>
       {/* watermark icon */}
       <Box sx={{
         position: 'absolute', right: -8, bottom: -12,

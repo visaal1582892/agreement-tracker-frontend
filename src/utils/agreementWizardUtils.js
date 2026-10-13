@@ -294,7 +294,7 @@ function buildCommercialDataSubmitPayload(commercialData, commercials = {}) {
       storeId: s.storeId || s.storeCode, // Fallbacks for resilience
       name: s.name || s.storeName || null,
       address: s.address ?? null,
-      pinCode: s.pinCode ?? null,
+      pinCode: s.pinCode != null && String(s.pinCode).trim() !== '' ? parseInt(String(s.pinCode).trim(), 10) : null,
       region1: s.region1 || s.country || null,
       region2: s.region2 || s.state || s.stateName || null,
       region3: s.region3 || s.city || null,

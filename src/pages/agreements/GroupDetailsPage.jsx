@@ -22,6 +22,7 @@ import {
   GroupDeleteDialogs,
   useGroupDeletion,
 } from '../../hooks/useGroupDeletion';
+import { buildAgreementQueryParams } from './AgreementListPage';
 
 export default function GroupDetailsPage() {
   const { groupId } = useParams();
@@ -68,24 +69,14 @@ export default function GroupDetailsPage() {
 
   const refreshAgreements = useCallback(() => {
     const parsed = JSON.parse(filterKey);
-    dispatch(fetchAgreements({
+    dispatch(fetchAgreements(buildAgreementQueryParams({
       page,
-      size: rowsPerPage,
+      rowsPerPage,
       scope: agreementScope,
       sortBy,
       sortDir,
-      agreementGroupId: Number(groupId),
-      ...(parsed.agreementName && { agreementName: parsed.agreementName }),
-      ...(parsed.agreementGroupName && { agreementGroupName: parsed.agreementGroupName }),
-      ...(parsed.status && { status: parsed.status }),
-      ...(parsed.ownerName && { ownerName: parsed.ownerName }),
-      ...(parsed.vendorId && { vendorId: parsed.vendorId }),
-      ...(parsed.incomeTypeId && { incomeTypeId: parsed.incomeTypeId }),
-      ...(parsed.startDateFrom && { startDateFrom: parsed.startDateFrom }),
-      ...(parsed.startDateTo && { startDateTo: parsed.startDateTo }),
-      ...(parsed.endDateFrom && { endDateFrom: parsed.endDateFrom }),
-      ...(parsed.endDateTo && { endDateTo: parsed.endDateTo }),
-    }));
+      filters: parsed,
+    })));
   }, [dispatch, page, rowsPerPage, sortBy, sortDir, groupId, filterKey, agreementScope]);
 
   useEffect(() => {
@@ -108,7 +99,7 @@ export default function GroupDetailsPage() {
   }, [groupId, handlePageChange]);
 
   const showDelete = group?.canDelete === true;
-  const showEdit = hasRight(RIGHTS.ADMIN_USERS);
+  const showEdit = hasRight(RIGHTS.ADMIN_USERS) && group?.isActive === true;
 
   const handleDelete = async () => {
     if (!group) return;
@@ -161,8 +152,8 @@ export default function GroupDetailsPage() {
   }
 
   return (
-    <Box>
-      <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ mb: 1.5 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
+      <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ mb: 2 }}>
         <MuiLink
           component="button"
           underline="hover"
@@ -177,112 +168,71 @@ export default function GroupDetailsPage() {
         </Typography>
       </Breadcrumbs>
 
-      <Paper
-        elevation={0}
-        variant="outlined"
-        sx={{ p: 3, mb: 3, borderRadius: 2 }}
-      >
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            mb: 3,
-            position: "relative",
-          }}
-        >
-          <Typography variant="h4" fontWeight="bold">
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+          <Typography variant="h5" fontWeight="bold">
             {group?.name || '—'}
           </Typography>
-
-          {(showDelete || showEdit) && (
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-              }}
-            >
-              {showEdit && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<EditOutlined />}
-                  onClick={openRename}
-                >
-                  Edit
-                </Button>
-              )}
-
-              {showDelete && (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  size="small"
-                  startIcon={<DeleteOutlined />}
-                  onClick={handleDelete}
-                >
-                  Delete
-                </Button>
-              )}
-            </Stack>
-          )}
+          <Chip label={`Created by ${group?.createdByName || '—'}`} size="small" variant="outlined" />
+          <Chip
+            size="small"
+            label={group?.isActive ? 'Active' : 'Inactive'}
+            color={group?.isActive ? 'success' : 'default'}
+          />
         </Box>
 
-        <Stack
-          direction="row"
-          spacing={6}
-          divider={<Divider orientation="vertical" flexItem />}
-        >
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-              Created By
-            </Typography>
-            <Typography variant="body1" fontWeight="medium">
-              {group?.createdByName || '—'}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-              Status
-            </Typography>
-            <Box sx={{ mt: 0.5 }}>
-              <Chip
-                size="small"
-                label={group?.isActive ? 'Active' : 'Inactive'}
-                color={group?.isActive ? 'success' : 'default'}
+        {(showDelete || showEdit) && (
+          <Stack direction="row" spacing={1} sx={{ ml: 'auto' }}>
+            {showEdit && (
+              <Button
                 variant="outlined"
-              />
-            </Box>
-          </Box>
-        </Stack>
-      </Paper>
+                size="small"
+                startIcon={<EditOutlined />}
+                onClick={openRename}
+              >
+                Edit
+              </Button>
+            )}
+            {showDelete && (
+              <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                startIcon={<DeleteOutlined />}
+                onClick={handleDelete}
+              >
+                Delete
+              </Button>
+            )}
+          </Stack>
+        )}
+      </Box>
 
       <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5 }}>
         Agreements in this Group
       </Typography>
 
-      <AgreementsTable
-        rows={agreements}
-        loading={loading}
-        totalCount={totalElements}
-        page={page}
-        rowsPerPage={rowsPerPage}
-        onPageChange={handlePageChange}
-        onRowsPerPageChange={handleRowsPerPageChange}
-        sortBy={sortBy}
-        sortDir={sortDir}
-        onSort={handleSort}
-        filters={filters}
-        onFilterChange={handleFilterChange}
-        onRefresh={refreshAgreements}
-        lockedGroupId={Number(groupId)}
-        onRowClick={(row) => navigateToAgreement(row, navigate, { mode: 'group' })}
-        draftEditMode="group"
-        emptyMessage="No agreements in this group."
-      />
+      <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <AgreementsTable
+          rows={agreements}
+          loading={loading}
+          totalCount={totalElements}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={handlePageChange}
+          onRowsPerPageChange={handleRowsPerPageChange}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSort={handleSort}
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          onRefresh={refreshAgreements}
+          lockedGroupId={Number(groupId)}
+          onRowClick={(row) => navigateToAgreement(row, navigate, { mode: 'group' })}
+          draftEditMode="group"
+          emptyMessage="No agreements in this group."
+        />
+      </Box>
 
       <GroupDeleteDialogs
         modal={groupDeletion.modal}

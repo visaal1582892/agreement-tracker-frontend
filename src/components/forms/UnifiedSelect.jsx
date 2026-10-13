@@ -189,7 +189,8 @@ export default function UnifiedSelect({
     [multiple, onChange, selectedItems, isOptionEqualToValue, maxVisibleChips],
   );
 
-  const clearAll = useCallback(() => {
+  const clearAll = useCallback((e) => {
+    e?.stopPropagation?.();
     onChange?.(multiple ? [] : null);
     setMoreAnchor(null);
     setPopoverSearch('');
@@ -261,7 +262,11 @@ export default function UnifiedSelect({
       <Box
         onClick={() => {
           if (disabled) return;
-          if (hasSingleValue) return;
+          if (hasSingleValue) {
+            if (isOpen) closeDropdown();
+            else openDropdown();
+            return;
+          }
           if (searchable) inputRef.current?.focus();
           else openDropdown();
         }}
@@ -269,6 +274,8 @@ export default function UnifiedSelect({
           display: 'flex',
           alignItems: 'center',
           flexWrap: 'nowrap',
+          width: '100%',
+          boxSizing: 'border-box',
           gap: 0.75,
           minHeight: 40,
           px: 1.25,
@@ -277,7 +284,7 @@ export default function UnifiedSelect({
           border: `1px solid ${borderColor}`,
           borderWidth: isOpen ? 2 : 1,
           bgcolor: disabled ? alpha(BRAND.bgGray, 0.6) : BRAND.white,
-          cursor: disabled ? 'not-allowed' : (hasSingleValue ? 'default' : (searchable ? 'text' : 'pointer')),
+          cursor: disabled ? 'not-allowed' : (hasSingleValue ? 'pointer' : (searchable ? 'text' : 'pointer')),
           transition: 'all 0.15s ease-in-out',
           boxShadow: isOpen ? `0 0 0 3px ${alpha(chipColor, 0.15)}` : 'none',
           '&:hover': disabled ? {} : { borderColor: isOpen ? chipColor : '#94A3B8' },
@@ -342,7 +349,7 @@ export default function UnifiedSelect({
               onDelete={disabled ? undefined : clearAll}
               sx={{
                 height: 26,
-                maxWidth: 'calc(100% - 24px)',
+                maxWidth: 'calc(100% - 28px)',
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 flexShrink: 1,
@@ -360,6 +367,7 @@ export default function UnifiedSelect({
         {searchable && !hasSingleValue && (
           <InputBase
             inputRef={inputRef}
+            type="search"
             value={inputDisplayValue}
             onChange={handleInputChange}
             onFocus={handleInputFocus}
@@ -375,12 +383,28 @@ export default function UnifiedSelect({
             aria-expanded={isOpen}
             aria-controls={listboxId}
             aria-autocomplete="list"
+            autoComplete="off"
+            inputProps={{
+              autoComplete: 'off',
+              autoCorrect: 'off',
+              autoCapitalize: 'off',
+              spellCheck: 'false',
+              'data-lpignore': 'true',
+              'data-1p-ignore': 'true',
+              'data-form-type': 'other',
+              name: 'select_search_query',
+            }}
             sx={{
               flex: 1,
               minWidth: 80,
               fontSize: '0.875rem',
               color: BRAND.textPrimary,
               '& input::placeholder': { color: BRAND.textSecondary, opacity: 1 },
+              '& input[type="search"]::-webkit-search-cancel-button, & input[type="search"]::-webkit-search-decoration, & input[type="search"]::-webkit-search-results-button, & input[type="search"]::-webkit-search-results-decoration': {
+                display: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+              },
             }}
           />
         )}
@@ -393,7 +417,7 @@ export default function UnifiedSelect({
         )}
 
         {/* Right controls */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, pl: 0.25, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, pl: 0.25, flexShrink: 0, ml: 'auto' }}>
           {loading && <CircularProgress size={16} sx={{ color: chipColor }} />}
 
           {!disabled && multiple && selectedItems.length > 0 && (
@@ -427,7 +451,7 @@ export default function UnifiedSelect({
         <Portal>
           <Box
             ref={dropdownRef}
-            sx={{ position: 'fixed', top: dropdownPosition.top, left: dropdownPosition.left, width: dropdownPosition.width, zIndex: 1300 }}
+            sx={{ position: 'fixed', top: dropdownPosition.top, left: dropdownPosition.left, width: dropdownPosition.width, zIndex: 1400 }}
           >
             <Paper
               id={listboxId}

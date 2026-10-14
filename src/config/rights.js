@@ -58,6 +58,7 @@ export const ROUTE_RIGHTS = {
   '/master/products': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/income-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/agreement-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
+  '/master/asset-types': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/price-off-locations': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/agreement-groups': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],
   '/master/users': [RIGHTS.MASTER_VIEW, RIGHTS.MASTER_MANAGE],

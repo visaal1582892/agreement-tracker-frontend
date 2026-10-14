@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
-  Box, Grid, FormControl, InputLabel, Select, MenuItem, TextField,
+  Box, Grid, FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import WizardFieldAnchor from '../../../components/wizard/WizardFieldAnchor';
-import { ASSET_TYPE_OPTIONS } from '../../../constants/assetTypes';
+import { useAssetTypes } from '../../../hooks/useAssetTypes';
 
 const ASSET_CATEGORY_OPTIONS = [
   { value: 'PHYSICAL_ASSET', label: 'Physical Asset' },
@@ -12,6 +12,7 @@ const ASSET_CATEGORY_OPTIONS = [
 
 export default function AssetRentalScopeFields({ asset, onUpdateAsset, fieldErrors = {} }) {
   const isActivityCategory = asset?.assetCategory === 'ACTIVITY';
+  const { assetTypes } = useAssetTypes();
 
   useEffect(() => {
     if (isActivityCategory && asset?.assetType) {
@@ -26,6 +27,37 @@ export default function AssetRentalScopeFields({ asset, onUpdateAsset, fieldErro
     }
     onUpdateAsset({ assetCategory: nextCategory });
   };
+
+  const assetTypeOptions = useMemo(() => {
+    const baseList = (assetTypes && assetTypes.length > 0)
+      ? assetTypes.map((t) => (typeof t === 'string' ? t.trim() : (t?.name || '').trim()))
+      : [];
+
+    const uniqueMap = new Map();
+    baseList.forEach((name) => {
+      const trimmed = (name || '').trim();
+      if (trimmed && !uniqueMap.has(trimmed.toLowerCase())) {
+        uniqueMap.set(trimmed.toLowerCase(), trimmed);
+      }
+    });
+
+    const existing = (asset?.assetType || '').trim();
+    if (existing) {
+      const existingLower = existing.toLowerCase();
+      if (!uniqueMap.has(existingLower)) {
+        uniqueMap.set(existingLower, existing);
+      }
+    }
+
+    return Array.from(uniqueMap.values());
+  }, [assetTypes, asset?.assetType]);
+
+  const selectedAssetType = useMemo(() => {
+    const current = (asset?.assetType || '').trim();
+    if (!current) return '';
+    const match = assetTypeOptions.find((opt) => opt.toLowerCase() === current.toLowerCase());
+    return match || current;
+  }, [assetTypeOptions, asset?.assetType]);
 
   return (
     <Box>
@@ -53,11 +85,11 @@ export default function AssetRentalScopeFields({ asset, onUpdateAsset, fieldErro
               <FormControl fullWidth size="small" required error={Boolean(fieldErrors.assetType)}>
                 <InputLabel>Asset Type</InputLabel>
                 <Select
-                  value={asset?.assetType || ''}
+                  value={selectedAssetType}
                   label="Asset Type *"
                   onChange={(e) => onUpdateAsset({ assetType: e.target.value })}
                 >
-                  {ASSET_TYPE_OPTIONS.map((type) => (
+                  {assetTypeOptions.map((type) => (
                     <MenuItem key={type} value={type}>{type}</MenuItem>
                   ))}
                 </Select>

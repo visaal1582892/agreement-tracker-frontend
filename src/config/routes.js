@@ -30,6 +30,7 @@ export const ROUTES = {
   MASTER_INCOME_TYPES: '/master/income-types',
   MASTER_CHANNELS: '/master/channels',
   MASTER_AGREEMENT_TYPES: '/master/agreement-types',
+  MASTER_ASSET_TYPES: '/master/asset-types',
   MASTER_PRICE_OFF_LOCATIONS: '/master/price-off-locations',
   MASTER_USERS: '/master/users',
   MASTER_ROLE_RIGHTS: '/master/role-rights',

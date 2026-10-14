@@ -101,6 +101,7 @@ export const ENDPOINTS = {
   // Master Data — simple dropdowns (backward compat with wizard)
   INCOME_TYPES: `${BASE}/master/income-types`,
   AGREEMENT_TYPES: `${BASE}/master/agreement-types`,
+  ASSET_TYPES: `${BASE}/master/asset-types`,
   STATES: `${BASE}/master/states`,
 
   INTEGRATION_MANUFACTURERS: `${BASE}/integration/manufacturers`,
@@ -138,6 +139,11 @@ export const ENDPOINTS = {
   MASTER_AGREEMENT_TYPES_SEARCH: `${BASE}/master/agreement-types/search`,
   MASTER_AGREEMENT_TYPE_BY_ID: (id) => `${BASE}/master/agreement-types/${id}`,
   MASTER_AGREEMENT_TYPE_TOGGLE: (id) => `${BASE}/master/agreement-types/${id}/toggle-status`,
+
+  MASTER_ASSET_TYPES: `${BASE}/master/asset-types`,
+  MASTER_ASSET_TYPES_SEARCH: `${BASE}/master/asset-types/search`,
+  MASTER_ASSET_TYPE_BY_ID: (id) => `${BASE}/master/asset-types/${id}`,
+  MASTER_ASSET_TYPE_TOGGLE: (id) => `${BASE}/master/asset-types/${id}/toggle-status`,
 
   MASTER_CHANNELS: `${BASE}/master/channels`,
   MASTER_CHANNELS_SEARCH: `${BASE}/master/channels/search`,

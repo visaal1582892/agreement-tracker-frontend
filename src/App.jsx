@@ -31,6 +31,7 @@ import AgreementGroupMasterPage from './pages/master/AgreementGroupMasterPage';
 import IncomeTypePage from './pages/master/IncomeTypePage';
 import ChannelMasterPage from './pages/master/ChannelMasterPage';
 import AgreementTypePage from './pages/master/AgreementTypePage';
+import AssetTypeMasterPage from './pages/master/AssetTypeMasterPage';
 import PriceOffLocationMasterPage from './pages/master/PriceOffLocationMasterPage';
 import UsersMasterPage from './pages/master/UsersMasterPage';
 import RoleRightsMasterPage from './pages/master/RoleRightsMasterPage';
@@ -111,6 +112,7 @@ export default function App() {
                         <Route path={ROUTES.MASTER_INCOME_TYPES} element={<IncomeTypePage />} />
                         <Route path={ROUTES.MASTER_CHANNELS} element={<ChannelMasterPage />} />
                         <Route path={ROUTES.MASTER_AGREEMENT_TYPES} element={<AgreementTypePage />} />
+                        <Route path={ROUTES.MASTER_ASSET_TYPES} element={<AssetTypeMasterPage />} />
                         <Route path={ROUTES.MASTER_PRICE_OFF_LOCATIONS} element={<PriceOffLocationMasterPage />} />
                         <Route path={ROUTES.MASTER_USERS} element={<UsersMasterPage />} />
                         <Route path={ROUTES.MASTER_ROLE_RIGHTS} element={<RoleRightsMasterPage />} />

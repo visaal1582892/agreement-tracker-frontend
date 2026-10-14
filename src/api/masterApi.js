@@ -59,6 +59,16 @@ export const agreementTypeApi = {
   toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_AGREEMENT_TYPE_TOGGLE(id)),
 };
 
+// ── Asset Types ─────────────────────────────────────────────────────────────
+export const assetTypeApi = {
+  search:       (req) => search(ENDPOINTS.MASTER_ASSET_TYPES_SEARCH, req),
+  list:         ()    => getAll(ENDPOINTS.MASTER_ASSET_TYPES),
+  getById:      (id)  => getById(ENDPOINTS.MASTER_ASSET_TYPE_BY_ID(id)),
+  create:       (d)   => create(ENDPOINTS.MASTER_ASSET_TYPES, d),
+  update:       (id, d) => update(ENDPOINTS.MASTER_ASSET_TYPE_BY_ID(id), d),
+  toggleStatus: (id)  => toggle(ENDPOINTS.MASTER_ASSET_TYPE_TOGGLE(id)),
+};
+
 // ── Channels ─────────────────────────────────────────────────────────────────
 export const channelApi = {
   search:       (req) => search(ENDPOINTS.MASTER_CHANNELS_SEARCH, req),

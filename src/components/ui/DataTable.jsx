@@ -66,9 +66,9 @@ function stickyCellSx(col, stickyOffsets, { isHeader = false, isFilter = false, 
   if (right == null) return {};
 
   const isLeftEdge = right > 0;
-  let zIndex = 10;
-  if (isFilter) zIndex = 11;
-  if (isHeader) zIndex = stickyHeader ? 13 : 12;
+  let zIndex = 2;
+  if (isFilter) zIndex = 6;
+  if (isHeader) zIndex = stickyHeader ? 8 : 7;
 
   const bg = isHeader ? BRAND.bgGray : (isFilter ? STICKY_FILTER_BG : STICKY_BODY_BG);
 
@@ -221,15 +221,19 @@ export default function DataTable({
         <TableContainer
           component={Paper}
           elevation={0}
-        sx={{
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'divider',
-          overflowX: 'auto',
-          overflowY: 'auto',
-          height: '100%',
-        }}
-      >
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            overflowX: 'auto',
+            overflowY: 'auto',
+          }}
+        >
         <Table
           size="small"
           stickyHeader={stickyHeader}
@@ -249,7 +253,7 @@ export default function DataTable({
           </colgroup>
           <TableHead>
             {/* ── Column Headers ── */}
-            <TableRow>
+            <TableRow sx={{ height: 40 }}>
               {columns.map((col) => (
                 <TableCell
                   key={col.field}
@@ -258,6 +262,11 @@ export default function DataTable({
                     fontWeight: 600,
                     whiteSpace: 'nowrap',
                     bgcolor: BRAND.bgGray,
+                    height: 40,
+                    boxSizing: 'border-box',
+                    py: 0.75,
+                    top: 0,
+                    zIndex: col.stickyRight ? 8 : 7,
                     ...columnSizeSx(col, horizontalScroll),
                     ...stickyCellSx(col, stickyOffsets, { isHeader: true, stickyHeader }),
                   }}
@@ -290,6 +299,8 @@ export default function DataTable({
                         px: 1,
                         bgcolor: '#fff',
                         borderBottom: `1px solid ${BRAND.borderLight}`,
+                        top: 40,
+                        zIndex: col.stickyRight ? 6 : 5,
                         ...columnSizeSx(col, horizontalScroll),
                         ...stickyCellSx(col, stickyOffsets, { isFilter: true, stickyHeader }),
                       }}

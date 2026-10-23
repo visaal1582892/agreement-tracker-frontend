@@ -82,9 +82,11 @@ export default function AgreementListPage() {
   }, [searchParams]);
 
   const groupFilters = useMemo(() => {
-    const filters = { isActive: 'true' };
+    const filters = {};
     for (const [key, value] of searchParams.entries()) {
-      if (value) filters[key] = value;
+      if (value !== undefined && value !== null && value !== '') {
+        filters[key] = value;
+      }
     }
     return filters;
   }, [searchParams]);
@@ -286,10 +288,13 @@ export default function AgreementListPage() {
 
   const handleClearFilters = useCallback(() => {
     setSearchParams(new URLSearchParams(), { replace: true });
-  }, [setSearchParams]);
+    groupTable.handlePageChange(null, 0);
+    agreementTable.handlePageChange(null, 0);
+    draftTable.handlePageChange(null, 0);
+  }, [setSearchParams, groupTable, agreementTable, draftTable]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 125px)' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5" fontWeight={700}>Agreements</Typography>
         {hasRight(RIGHTS.AGREEMENT_CREATE) && (
